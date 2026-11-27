@@ -2,6 +2,8 @@
 
 行政手続きや公的制度について相談できる、公開の行政相談チャットボットです。BrightBroom が運営しています。
 
+**公開中: https://bot.brightbroom.dpdns.org**
+
 [チームみらい](https://github.com/team-mirai) の [mirai-gbot](https://github.com/team-mirai/mirai-gbot) をフォークして改変したものです（ライセンスは同じ AGPL-3.0-or-later）。
 
 Next.js (App Router) + TypeScript のチャットボットで、回答は [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) の LLM（既定は Google Gemma 4）で生成します。API キーは不要で、Workers AI の無料枠（1 日 10,000 Neurons）の範囲なら無料で動きます。[Cloudflare Workers](https://developers.cloudflare.com/workers/) 上で [OpenNext](https://opennext.js.org/cloudflare) を使って動かしています。
