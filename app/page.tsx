@@ -218,13 +218,17 @@ export default function Home() {
 
   const brand = (
     <button type="button" className="brand" onClick={reset} aria-label="BrightBroom Bot トップに戻る">
-      {/* ロゴ: 常磐色の円に、ほうき（山吹の穂）ときらり */}
+      {/* ロゴ: 常磐色の円に、白いツバメ（キャラクター「ブルーム」）と山吹のくちばし */}
       <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
         <circle cx="16" cy="16" r="16" fill="currentColor" />
-        <path d="M22.6 5.8 15.1 15.9" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
-        <path d="M12.9 14.6 18.3 18.6 15.4 25.6C11.4 25.2 8.2 22.9 6.6 19.6Z" fill="var(--accent)" />
-        <path d="M12.6 14.7 18.2 18.8" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M23.4 19.2 24.3 21.3 26.4 22.2 24.3 23.1 23.4 25.2 22.5 23.1 20.4 22.2 22.5 21.3Z" fill="#ffffff" />
+        <g transform="translate(16 16) scale(1.15) translate(-16.5 -16)">
+          <path
+            d="M16.6 12 6 23Q8.9 21.9 10.7 20.4L8.5 25 12.6 20.9Q14.5 22.1 16.4 22.1C21 22.1 24.3 18.5 24.3 14.5V11C24.3 8.6 22.6 7 20.4 7S16.6 8.7 16.6 10.7Z"
+            fill="#ffffff"
+          />
+          <path d="M24.1 9.5 27 10.4 24.1 11.3Z" fill="var(--accent)" />
+          <circle cx="21.2" cy="9.9" r="0.85" fill="currentColor" />
+        </g>
       </svg>
       <span className="brand-name">
         BrightBroom Bot
