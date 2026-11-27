@@ -4,12 +4,12 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { useSpeechRecognition } from "./useSpeechRecognition";
 import { FuriganaContext, FuriganaText } from "./Furigana";
+import { isAbortError, streamChat } from "@/lib/client/chat-stream";
+import type { Mode } from "@/lib/chat/types";
 
 const FURIGANA_KEY = "bb-chat-bot:furigana";
 
 type Message = { role: "user" | "assistant"; content: string; error?: boolean };
-// "chat": 通常の行政相談 / "support": 使える支援制度を探す（AI インタビュー）
-type Mode = "chat" | "support";
 
 const SUPPORT_START ="使える支援制度を探したいです。";
 
@@ -76,6 +76,9 @@ export default function Home() {
   const [fontSize, setFontSize] = useState<FontSize>("normal");
   const [easyJapanese, setEasyJapanese] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // 生成中のリクエスト（「新しい相談」や画面を離れたときに中断する）
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // 振り仮名の設定はブラウザごとに記憶する（読めない環境でも動作には影響しない）
   useEffect(() => {
@@ -170,35 +173,29 @@ export default function Home() {
     setInput("");
     setLoading(true);
 
+    // 前の回答がまだ流れていれば止めてから新しく送る
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history.slice(-20).map(({ role, content }) => ({ role, content })),
-          mode: currentMode,
-          easyJapanese,
-        }),
-      });
-
-      if (!res.ok || !res.body) {
-        throw new Error(await res.text());
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let reply = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        reply += decoder.decode(value, { stream: true });
-        setMessages([...history, { role: "assistant", content: reply }]);
-      }
+      await streamChat(
+        { messages: history, mode: currentMode, easyJapanese },
+        {
+          signal: controller.signal,
+          onText: (reply) => setMessages([...history, { role: "assistant", content: reply }]),
+        },
+      );
     } catch (err) {
+      // 「新しい相談」などで中断した場合は何も表示しない
+      if (isAbortError(err)) return;
       const msg = err instanceof Error && err.message ? err.message : "エラーが発生しました。";
       setMessages([...history, { role: "assistant", content: msg, error: true }]);
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   }
 
@@ -208,7 +205,10 @@ export default function Home() {
   }
 
   function reset() {
-    if (loading) return;
+    // 回答の途中でも「新しい相談」を押せるようにし、生成中のリクエストは中断する
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
     speech.cancel();
     setMode("chat");
     setMessages([]);
@@ -414,7 +414,7 @@ export default function Home() {
           {brand}
           {mode === "support" && <span className="mode-badge">支援制度を探す</span>}
           {furiganaToggle}
-          <button type="button" className="button-secondary" onClick={reset} disabled={loading}>
+          <button type="button" className="button-secondary" onClick={reset}>
             新しい相談
           </button>
         </div>

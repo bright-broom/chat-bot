@@ -6,7 +6,10 @@
   "scripts": {
     "predev": "node scripts/copy-kuromoji-dict.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/copy-kuromoji-dict.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test",
+    "prebuild": "npm run check && node scripts/copy-kuromoji-dict.mjs",
     "build": "next build",
     "start": "next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
@@ -28,6 +31,7 @@
     "@types/react": "^19.3.3",
     "@types/react-dom": "^19.3.0",
     "typescript": "^5.9.3",
+    "vitest": "^5.1.2",
     "wrangler": "^4.168.0"
   },
   "engines": {
