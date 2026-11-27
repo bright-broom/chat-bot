@@ -8,16 +8,22 @@ import {
   safeCitationUrl,
 } from "./guard";
 import { BLOCKED_REPLY, BLOCKED_TOPIC_RULE, mentionsBlockedTopic } from "./blocked";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// OpenRouter 経由で LLM を呼び出す（OpenAI 互換の Chat Completions API）
+// LLM の呼び出し先は 2 通り:
+// - 既定: Cloudflare Workers AI（API キー不要。無料枠 1 日 10,000 Neurons。入力は学習に使われない）
+// - OPENROUTER_API_KEY を設定した場合: OpenRouter（政府・自治体サイトに限定した Web 検索つき）
+const WORKERS_AI_MODEL = process.env.WORKERS_AI_MODEL ?? "@cf/google/gemma-4-26b-a4b-it";
+
+// OpenRouter の Chat Completions API（OpenAI 互換）
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const BASE_MODEL = process.env.OPENROUTER_MODEL ?? "openai/gpt-6-luna";
-// Web 検索: OpenRouter の web プラグインで検索結果を付けて呼び出す。
+// Web 検索: OpenRouter の web プラグインで検索結果を付けて呼び出す（OpenRouter 利用時のみ）。
 // OPENROUTER_WEB_SEARCH=false で無効化できる（既定は有効）。
-const WEB_SEARCH = process.env.OPENROUTER_WEB_SEARCH !== "false";
+const OPENROUTER_WEB_SEARCH = process.env.OPENROUTER_WEB_SEARCH !== "false";
 // 互換のため、モデル名に ":online" が付いていたら外す（検索はプラグインで明示的に設定する）
 const MODEL = BASE_MODEL.replace(/:online$/, "");
 
@@ -44,16 +50,18 @@ function isAllowedUrl(url: string): boolean {
 }
 
 // ボット自身についての情報。「あなたは誰？」「無料？」「何ができる？」などにはこれだけを根拠に答えさせる。
-const BOT_PROFILE = [
+function botProfile(webSearch: boolean) {
+  return [
   "あなた自身について（自己紹介情報）:",
   "- 名前: BrightBroom Bot（ブライトブルーム ボット）。「BB ボット」「ブルームボット」などと呼ばれた場合も、あなた自身のことを指しています。",
   "- 目的: 行政手続きや公的制度についての疑問に、AI がチャットで手軽に答える行政相談用のチャットボットです。",
   "- 運営者: BrightBroom（個人開発。オープンソースとして GitHub の bright-broom/chat-bot で公開しています。チームみらいの mirai-gbot をもとに改変したものです）。",
   "- 利用料: 利用者は無料で使えます（会員登録も不要です）。",
-  "- できること: 行政手続き・届出・申請の方法や期限、給付・補助金などの公的制度、税金・年金・保険・福祉、窓口の案内などについての質問に答えます。必要に応じて Web 検索で最新情報を調べ、出典を示します。",
+  "- できること: 行政手続き・届出・申請の方法や期限、給付・補助金などの公的制度、税金・年金・保険・福祉、窓口の案内などについての質問に答えます。" + (webSearch ? "必要に応じて Web 検索で最新情報を調べ、出典を示します。" : "Web 検索はしないため、最新の金額や期限は公式サイトや窓口での確認を案内します。"),
   "- できないこと・注意: 個別の申請の代行や受付、個人情報を使った判定はできません。回答は AI によるもので誤りを含むことがあるため、最終的な判断は公式サイトや窓口で確認するよう案内してください。特定の政党や候補者への投票を勧めることはしません。",
   "あなたの名前・目的・運営者・利用料・できることを聞かれたら、上の情報だけをもとに一貫して答えてください。Web 検索結果に同名・類似名のもの（他社のサービスなど）が出てきても、それをあなた自身の説明として使わないでください。上の情報にないことは推測で答えず、わからないと伝えてください。",
 ].join("\n");
+}
 
 // "chat": 通常の行政相談 / "support": 状況を聞き取って使える支援制度を案内する（AI インタビュー）
 type Mode = "chat" | "support";
@@ -77,26 +85,26 @@ function scopeRules() {
   ];
 }
 
-function chatPrompt() {
+function chatPrompt(webSearch: boolean) {
   return [
     "あなたは行政相談用のチャットボットです。親切かつ簡潔に、ユーザーと同じ言語で答えてください。",
     ...scopeRules(),
     "挨拶や、このチャットボット自身（名前・目的・運営者・利用料・できること・使い方）についての質問は対応範囲内です。下の自己紹介情報をもとに短く答えたうえで行政相談を促してください。行政と関係があるか判断に迷う場合は、行政に関わる部分について答えてください。",
-    BOT_PROFILE,
+    botProfile(webSearch),
     `今日は ${todayJst()}（日本時間）です。`,
     "これはチャットです。人と会話するように、短く自然に返してください。",
     "- 1回の返答は基本 2〜4 文（日本語なら 200 字程度まで）。まず結論を一言で。",
     "- 見出し（#）、表、長い箇条書き、太字の多用はしない。箇条書きが必要なときも 3 項目まで。",
     "- 全部を一度に説明しようとせず、要点だけ答えて、必要なら「〇〇についても詳しく話しましょうか？」と続きを聞く。",
     "- ユーザーが詳しい説明・一覧・手順などを明示的に求めたときだけ、長めに答えてよい。",
-    WEB_SEARCH
+    webSearch
       ? `Web 検索は政府・自治体の公式サイト（${ALLOWED_DOMAINS.join(" / ")} ドメイン）だけを対象にしています。Web 検索結果が与えられた場合、最新の事実や数値はそれを根拠に答えてください。出典として示してよいのはこれらの公式サイトだけです。それ以外のサイト（民間のまとめサイト・ブログ・ニュースサイト等）を出典として示したり、そこにある情報を根拠にしたりしないでください。`
       + "出典は本文中に [サイト名](URL) の形で 1〜2 個だけ添え、URL をそのまま貼らないでください。検索結果で確認できないことは推測と明示してください。"
-      : "",
+      : "Web 検索は使えません。金額・期限・制度の改正など変わりうる情報は、古い可能性があることを一言添え、最新情報は担当の省庁・自治体の公式サイトや窓口で確認するよう案内してください。URL を推測で書かないでください。",
   ];
 }
 
-function supportPrompt() {
+function supportPrompt(webSearch: boolean) {
   return [
     "あなたは行政相談用のチャットボットで、今は「使える支援制度を探す」モードです。困っている方の状況を一問ずつ聞き取り、利用できそうな公的支援（給付・手当・減免・貸付・相談窓口）を案内します。ユーザーと同じ言語で、やさしく、責めない口調で話してください。",
     ...scopeRules(),
@@ -122,7 +130,7 @@ function supportPrompt() {
     "- 高齢の親の介護: 地域包括支援センター（最初の相談先）、介護保険の要介護認定とサービス、高額介護サービス費・高額医療合算介護サービス費、介護休業・介護休業給付金・介護休暇、自治体の家族介護支援（おむつ給付・家族介護慰労金など）、障害者控除対象者認定、仕事と介護の両立の相談窓口。",
     "## 緊急時",
     "- 食べるものがない、住む場所を失いそう、DV・虐待、命の危険や「死にたい」といった訴えがある場合は、聞き取りより先に、すぐ相談できる窓口（自治体の福祉窓口、自立相談支援機関、#8008 DV相談ナビ、189 児童相談所虐待対応ダイヤル、よりそいホットライン 0120-279-338、いのちの電話 など。番号は最新情報で確認）を案内する。命の危険が迫っている場合は 110 番・119 番を案内する。",
-    WEB_SEARCH
+    webSearch
       ? `Web 検索は政府・自治体の公式サイト（${ALLOWED_DOMAINS.join(" / ")} ドメイン）だけを対象にしています。出典として示してよいのはこれらの公式サイトだけです。`
         + "Web 検索結果が与えられた場合、制度の要件・金額・申請期限はそれを根拠に書いてください。出典は [サイト名](URL) の形で添え、URL をそのまま貼らないでください。検索結果で確認できないことは推測と明示してください。"
       : "Web 検索が使えないため、金額・期限などは古い可能性があることを案内の最後に明記し、必ず申請先で最新情報を確認するよう伝えてください。",
@@ -139,9 +147,9 @@ const EASY_JAPANESE_PROMPT = [
   "- 日付・時間・金額・電話番号などの数字は省略せずにはっきり書く。",
 ].join("\n");
 
-function systemPrompt(mode: Mode, easyJapanese = false) {
+function systemPrompt(mode: Mode, easyJapanese: boolean, webSearch: boolean) {
   return [
-    ...(mode === "support" ? supportPrompt() : chatPrompt()),
+    ...(mode === "support" ? supportPrompt(webSearch) : chatPrompt(webSearch)),
     BLOCKED_TOPIC_RULE,
     easyJapanese ? EASY_JAPANESE_PROMPT : "",
   ]
@@ -170,11 +178,9 @@ function plain(text: string, status: number, headers: Record<string, string> = {
 }
 
 export async function POST(req: Request) {
+  // OPENROUTER_API_KEY があれば OpenRouter、なければ Workers AI を使う
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    console.error("OPENROUTER_API_KEY is not set");
-    return plain("サーバーの設定に問題があります。", 500);
-  }
+  const webSearch = Boolean(apiKey) && OPENROUTER_WEB_SEARCH;
 
   if (isCrossSite(req)) {
     return plain("許可されていない送信元です。", 403);
@@ -216,45 +222,78 @@ export async function POST(req: Request) {
     return plain(BLOCKED_REPLY, 200);
   }
 
-  const upstream = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    // クライアントが切断したら上流の生成も止める（無駄なトークン消費を防ぐ）
-    signal: req.signal,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Title": "brightbroom-chat-bot",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      stream: true,
-      max_tokens: 4000,
-      reasoning: { effort: "low" },
-      // 行政相談は個人情報を含みうるため、入力を学習・保存に使うプロバイダーへはルーティングしない
-      provider: { data_collection: "deny" },
-      messages: [{ role: "system", content: systemPrompt(mode, easyJapanese) }, ...messages],
-      ...(WEB_SEARCH
-        ? { plugins: [{ id: "web", include_domains: INCLUDE_DOMAINS }] }
-        : {}),
-    }),
-  });
+  const chatMessages = [
+    { role: "system" as const, content: systemPrompt(mode, easyJapanese, webSearch) },
+    ...messages,
+  ];
 
-  if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => "");
-    console.error("OpenRouter error", upstream.status, detail.slice(0, 500));
-    // 上流のエラー詳細（アカウント・設定情報を含みうる）はクライアントに返さない
-    return plain(
-      upstream.status === 429
-        ? "混み合っています。しばらく待ってからお試しください。"
-        : "回答の生成に失敗しました。時間をおいてお試しください。",
-      502,
-    );
+  let body: ReadableStream<Uint8Array>;
+  if (apiKey) {
+    const upstream = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      // クライアントが切断したら上流の生成も止める（無駄なトークン消費を防ぐ）
+      signal: req.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "brightbroom-chat-bot",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        stream: true,
+        max_tokens: 4000,
+        reasoning: { effort: "low" },
+        // 行政相談は個人情報を含みうるため、入力を学習・保存に使うプロバイダーへはルーティングしない
+        provider: { data_collection: "deny" },
+        messages: chatMessages,
+        ...(webSearch
+          ? { plugins: [{ id: "web", include_domains: INCLUDE_DOMAINS }] }
+          : {}),
+      }),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => "");
+      console.error("OpenRouter error", upstream.status, detail.slice(0, 500));
+      // 上流のエラー詳細（アカウント・設定情報を含みうる）はクライアントに返さない
+      return plain(
+        upstream.status === 429
+          ? "混み合っています。しばらく待ってからお試しください。"
+          : "回答の生成に失敗しました。時間をおいてお試しください。",
+        502,
+      );
+    }
+    body = upstream.body;
+  } else {
+    const { env } = getCloudflareContext();
+    if (!env.AI) {
+      console.error("Workers AI binding (AI) is not configured");
+      return plain("サーバーの設定に問題があります。", 500);
+    }
+    try {
+      // モデル ID を環境変数で差し替えられるよう、型の決まった run() の多重定義は使わない
+      const ai = env.AI as unknown as {
+        run(model: string, input: Record<string, unknown>): Promise<ReadableStream<Uint8Array>>;
+      };
+      body = await ai.run(WORKERS_AI_MODEL, {
+        messages: chatMessages,
+        stream: true,
+        max_completion_tokens: 2000,
+      });
+    } catch (err) {
+      // 無料枠（1 日 10,000 Neurons）を使い切った場合などもここに来る
+      console.error("Workers AI error", err);
+      return plain(
+        "ただいま混み合っているか、本日の利用上限に達しました。時間をおいてお試しください。",
+        503,
+      );
+    }
   }
 
-  // OpenRouter の SSE を読み、本文テキストだけをクライアントへ流す
+  // SSE（OpenRouter / Workers AI）を読み、本文テキストだけをクライアントへ流す
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const reader = upstream.body.getReader();
+  const reader = body.getReader();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -285,6 +324,8 @@ export async function POST(req: Request) {
                   }[];
                 };
               }[];
+              // Workers AI の従来形式（OpenAI 形式でないモデル）
+              response?: unknown;
               error?: { message?: string };
             };
             try {
@@ -294,7 +335,7 @@ export async function POST(req: Request) {
             }
 
             if (chunk.error) {
-              console.error("OpenRouter stream error", chunk.error.message);
+              console.error("LLM stream error", chunk.error.message);
               controller.enqueue(encoder.encode("\n\n[エラーが発生しました。]"));
               continue;
             }
@@ -311,7 +352,10 @@ export async function POST(req: Request) {
                 citations.set(url, { url, title: a.url_citation?.title });
               }
             }
-            if (delta?.content) controller.enqueue(encoder.encode(delta.content));
+            // 思考（reasoning）部分は流さず、本文だけを返す
+            const text =
+              delta?.content ?? (typeof chunk.response === "string" ? chunk.response : "");
+            if (text) controller.enqueue(encoder.encode(text));
           }
         }
 

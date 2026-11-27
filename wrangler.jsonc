@@ -14,9 +14,13 @@
       "service": "chat-bot"
     }
   ],
+  // Workers AI（LLM）。OPENROUTER_API_KEY を設定しない場合はこれで回答を生成する
+  "ai": {
+    "binding": "AI"
+  },
   "observability": {
     "enabled": true
   }
-  // OPENROUTER_API_KEY はシークレットとして設定する（ダッシュボード、または `npx wrangler secret put OPENROUTER_API_KEY`）
-  // 任意の設定（OPENROUTER_MODEL、RATE_LIMIT_PER_MINUTE など）は "vars" に書くか、ダッシュボードで変数として追加する
+  // 任意: OPENROUTER_API_KEY をシークレットに設定すると、Workers AI の代わりに OpenRouter（Web 検索つき）を使う
+  // 任意の設定（WORKERS_AI_MODEL、RATE_LIMIT_PER_MINUTE など）は "vars" に書くか、ダッシュボードで変数として追加する
 }
