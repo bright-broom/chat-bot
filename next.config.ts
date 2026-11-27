@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-// `next dev` でも Cloudflare のバインディング・環境変数を使えるようにする
+// `next dev` でも Cloudflare のバインディング（Workers AI など）・環境変数を使えるようにする。
+// Workers AI はリモート実行のためログインが必要になるので、ビルド時には呼ばない。
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
-initOpenNextCloudflareForDev();
+if (isDev) initOpenNextCloudflareForDev();
