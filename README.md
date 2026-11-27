@@ -107,6 +107,7 @@ npm run deploy
 ## 元プロジェクトからの主な変更点
 
 - ボットの名前・運営者を BrightBroom Bot / BrightBroom に変更（`app/api/chat/route.ts` の `BOT_PROFILE`、画面のロゴ、タイトル）
+- ロゴ（ほうきときらり）とキャラクター「ブルーム」（`public/bot-avatar.svg`）を新しく作成（元のロゴとキャラクター画像は使っていません）
 - 元プロジェクト固有の回答 NG 人物の指定を削除（仕組みは残しています）
 - トップのプロトタイプ告知（YouTube 配信へのリンク）を削除
 - Issue 自動実装・コンフリクト自動解決の GitHub Actions を削除
