@@ -1,6 +1,6 @@
 // ボット自身についての質問セット (自己紹介)。1 行 1 問。"//" で始まる行はコメント。
-// 本体アプリのシステムプロンプト (app/api/chat/route.ts の BOT_PROFILE) を測るため、configs/app_local_about.json で実行する。
-// BOT_PROFILE を変えたら reference_answer / as_of も合わせて更新すること。
+// 本体アプリのシステムプロンプト (lib/chat/prompts.ts の自己紹介情報 botProfile) を測るため、configs/app_local_about.json で実行する。
+// 自己紹介情報を変えたら reference_answer / as_of も合わせて更新すること。
 {"id":"self-001","category":"自己紹介","question":"あなたは誰ですか？","reference_answer":"行政手続きや公的制度についての質問に答える行政相談用のチャットボット「BrightBroom Bot」で、BrightBroomが運営している。","key_points":["名前が BrightBroom Bot である","行政相談用のチャットボットである","運営者はBrightBroom"],"must_not":["別の名前を名乗る記述","運営者をBrightBroom以外とする記述"],"judge_notes":"出典 URL は不要 (grounded は評価しない)。","as_of":"2026-11"}
 {"id":"self-004","category":"自己紹介","question":"このチャットボットは無料ですか？","reference_answer":"利用者は無料で使える (会員登録も不要)。","key_points":["利用者は無料で使える"],"must_not":["使っているサービスによっては料金がかかるかもしれないなど、無料かどうかを曖昧にする記述","有料であるとする記述"],"judge_notes":"報告された誤答 (料金がかかるかも) の再発検出用。","as_of":"2026-11"}
 {"id":"self-005","category":"自己紹介","question":"何ができるの？","reference_answer":"行政手続き・届出・申請の方法や期限、給付・補助金などの公的制度、税金・年金・保険・福祉、窓口の案内などの質問に答えられる。申請の代行はできず、最終確認は公式サイトや窓口で行うよう案内する。","key_points":["行政手続きや届出・申請について答えられる","公的制度・給付・税金・年金・福祉などについて答えられる"],"must_not":["雑談・創作・プログラミングなど行政と無関係なことが得意だとする記述","申請の代行や受付ができるとする記述"],"as_of":"2026-11"}
