@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { STREAM_ERROR_TEXT, citationLabel, formatCitations, parseSseLine, toTextStream } from "@/lib/chat/sse";
+import { EMPTY_ANSWER_TEXT, STREAM_ERROR_TEXT, citationLabel, formatCitations, parseSseLine, toTextStream } from "@/lib/chat/sse";
 
 const enc = new TextEncoder();
 
@@ -131,10 +131,14 @@ describe("完了時のコールバック（使用量の計測・回答キャッ�
     expect(onComplete.mock.calls[0][0].failed).toBe(true);
   });
 
-  it("空の回答も failed 扱い", async () => {
+  it("本文が空なら案内文を出し、failed 扱い（キャッシュしない）", async () => {
     const onComplete = vi.fn();
-    await readAll(toTextStream(streamOf(["data: [DONE]\n\n"]), { onComplete }));
-    expect(onComplete.mock.calls[0][0]).toMatchObject({ text: "", failed: true });
+    const onUpstreamError = vi.fn();
+    const reasoningOnly = 'data: {"choices":[{"delta":{"reasoning_content":"考え中"}}]}\n\n';
+    const out = await readAll(toTextStream(streamOf([reasoningOnly, "data: [DONE]\n\n"]), { onComplete, onUpstreamError }));
+    expect(out).toBe(EMPTY_ANSWER_TEXT);
+    expect(onComplete.mock.calls[0][0]).toMatchObject({ failed: true });
+    expect(onUpstreamError).toHaveBeenCalledWith("empty answer");
   });
 });
 

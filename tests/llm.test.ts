@@ -31,7 +31,9 @@ describe("Workers AI", () => {
     expect(await p.stream(msgs, opts)).toBe(stream);
     expect(run).toHaveBeenCalledWith(
       "@cf/test/model",
-      expect.objectContaining({ messages: msgs, stream: true, max_completion_tokens: 321 }),
+      expect.objectContaining({ messages: msgs, stream: true, max_completion_tokens: 321,
+        chat_template_kwargs: { enable_thinking: false },
+      }),
     );
     expect(p.model).toBe("@cf/test/model");
     expect(p.webSearch).toBe(false);

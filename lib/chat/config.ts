@@ -62,8 +62,8 @@ export function loadConfig(env: Env = process.env): ChatConfig {
     },
     // 通常の相談は短く答える指示なので上限も小さく、支援制度の一覧は長くなるので大きく
     maxOutputTokens: {
-      chat: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_CHAT", 700)),
-      support: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_SUPPORT", 1800)),
+      chat: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_CHAT", 1200)),
+      support: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_SUPPORT", 2400)),
     },
     rateLimit: {
       perMinute: intFrom(env, "RATE_LIMIT_PER_MINUTE", 10),
