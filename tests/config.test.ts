@@ -7,7 +7,7 @@ describe("loadConfig", () => {
     expect(c.openRouter).toBeNull();
     expect(c.workersAi.model).toBe(DEFAULT_WORKERS_AI_MODEL);
     expect(c.limits).toMatchObject({ messages: 10, messageChars: 2000, totalChars: 6000, assistantChars: 800 });
-    expect(c.maxOutputTokens).toEqual({ chat: 700, support: 1800 });
+    expect(c.maxOutputTokens).toEqual({ chat: 1200, support: 2400 });
     expect(c.rateLimit).toEqual({ perMinute: 10, perDay: 100 });
     expect(c.allowedDomains).toEqual(["go.jp", "lg.jp"]);
   });

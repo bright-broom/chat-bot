@@ -15,7 +15,14 @@ export function createWorkersAiProvider(ai: WorkersAiBinding, model: string): Ch
     async stream(messages: ModelMessage[], { maxTokens }: StreamOptions) {
       let result: unknown;
       try {
-        result = await ai.run(model, { messages, stream: true, max_completion_tokens: maxTokens });
+        result = await ai.run(model, {
+          messages,
+          stream: true,
+          max_completion_tokens: maxTokens,
+          // Gemma 4 などの推論モデルは「考える」トークンを先に出し、上限を食い潰して本文が空になる。
+          // 行政相談の案内に長い推論は不要なので切る（消費も応答時間も減る）。
+          chat_template_kwargs: { enable_thinking: false },
+        });
       } catch (err) {
         // 無料枠（1 日 10,000 Neurons）を使い切った場合などもここに来る
         throw new UpstreamError(

@@ -31,6 +31,8 @@ type Chunk = {
 };
 
 export const STREAM_ERROR_TEXT = "\n\n[エラーが発生しました。]";
+/** 上流が本文を 1 文字も返さずに終わったとき（推論だけで上限に達した等）に出す文言 */
+export const EMPTY_ANSWER_TEXT = "回答を生成できませんでした。質問を短くするか、時間をおいてもう一度お試しください。";
 
 /** 出典リンクの表示名: タイトル（長ければ短縮）→ なければドメイン */
 export function citationLabel(c: Citation): string {
@@ -135,8 +137,15 @@ export function toTextStream(
         buffer += decoder.decode();
         if (buffer) handleLine(buffer, controller);
 
-        const tail = formatCitations([...citations.values()], maxCitations);
-        if (tail) emit(tail, controller);
+        if (!emitted.trim()) {
+          // 空のまま 200 を返すと画面が無反応に見えるため、理由を伝える
+          failed = true;
+          onUpstreamError?.("empty answer");
+          emit(EMPTY_ANSWER_TEXT, controller);
+        } else {
+          const tail = formatCitations([...citations.values()], maxCitations);
+          if (tail) emit(tail, controller);
+        }
       } catch (err) {
         failed = true;
         onUpstreamError?.(err instanceof Error ? err.message : String(err));
@@ -144,7 +153,7 @@ export function toTextStream(
       } finally {
         controller.close();
       }
-      onComplete?.({ text: emitted, failed: failed || !emitted.trim(), usage });
+      onComplete?.({ text: emitted, failed, usage });
     },
     cancel(reason) {
       // クライアントが切断したら上流の読み取りも止める（無駄な生成・課金を防ぐ）
