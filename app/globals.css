@@ -1,23 +1,76 @@
 /*
- * デジタル庁デザインシステム（DADS）準拠のスタイル
- * 値はすべて @digital-go-jp/design-tokens の CSS 変数を参照する。
- * DADS はライトテーマのみを定義しているため、ダークモードは提供しない。
+ * BrightBroom Bot のスタイル
+ * レイアウト・文字サイズ・余白はデジタル庁デザインシステム（DADS）のトークンを使い、
+ * 色だけは独自パレット「朝の掃除」（生成りの紙 × 常磐色 × 朝日の山吹）に置き換えている。
+ * どの組み合わせも WCAG 2.2 AA（本文 4.5:1、UI 部品 3:1）以上のコントラストを確保している。
+ * ライトテーマのみ。
  */
 
 :root {
-  /* セマンティックな別名（DADS のトークンに対応付け） */
-  --text-body: var(--color-neutral-solid-gray-800);
-  --text-description: var(--color-neutral-solid-gray-600);
-  --bg-base: var(--color-neutral-white);
-  --bg-subtle: var(--color-neutral-solid-gray-50);
-  --border-divider: var(--color-neutral-solid-gray-420);
-  --border-field: var(--color-neutral-solid-gray-600);
-  --key: var(--color-key-900);
-  --key-hover: var(--color-key-1000);
-  --key-active: var(--color-key-1200);
-  --key-tint: var(--color-key-50);
-  --error: var(--color-semantic-error-1);
-  --focus-ring: var(--color-primitive-yellow-300);
+  /* ---- パレット（ここだけ変えれば全体の色が変わる） ---- */
+  --palette-paper: #fbf8f3;        /* 生成り: ページの地 */
+  --palette-paper-deep: #f4efe7;   /* 生成り（濃）: 一段沈んだ面 */
+  --palette-surface: #ffffff;      /* 白: カード・入力欄 */
+  --palette-ink: #26221d;          /* 墨: 本文 15.8:1 */
+  --palette-ink-muted: #5c554c;    /* 鈍色: 補足 6.9:1 */
+  --palette-ink-faint: #736b61;    /* 薄墨: プレースホルダー 5.2:1 */
+  --palette-stone: #8a8175;        /* 石: 入力欄の枠 3.8:1 */
+  --palette-sand: #dcd3c6;         /* 砂: 区切り線 */
+  --palette-linen: #e8e1d6;        /* 麻: 細い枠 */
+  --palette-teal-700: #0e5e56;     /* 常磐: キーカラー 7.6:1 */
+  --palette-teal-800: #0a4c45;
+  --palette-teal-900: #073b36;
+  --palette-teal-950: #0f3a35;     /* ヒーローの地 */
+  --palette-teal-50: #e4f1ed;
+  --palette-teal-200: #b7d7ce;
+  --palette-mint-100: #ddeee9;     /* ヒーロー上の本文 10.4:1 */
+  --palette-mint-300: #b4d9cf;     /* ヒーロー上の補足 8.2:1 */
+  --palette-mint-500: #76afa3;     /* ヒーロー上の枠 */
+  --palette-teal-hover-dark: #18524b;
+  --palette-amber-400: #f2b544;    /* 山吹: 朝日のアクセント */
+  --palette-amber-500: #e5a22e;
+  --palette-plum-700: #74408f;     /* 訪問済みリンク */
+  --palette-vermilion-700: #b3261e;/* エラー */
+  --palette-sun-300: #f5c542;      /* フォーカスリング */
+
+  /* ---- 役割（コンポーネントはこちらを参照する） ---- */
+  --bg-page: var(--palette-paper);
+  --bg-base: var(--palette-surface);
+  --bg-subtle: var(--palette-paper-deep);
+  --text-strong: var(--palette-ink);
+  --text-body: var(--palette-ink);
+  --text-description: var(--palette-ink-muted);
+  --text-placeholder: var(--palette-ink-faint);
+  --border-divider: var(--palette-sand);
+  --border-hairline: var(--palette-linen);
+  --border-field: var(--palette-stone);
+  --key: var(--palette-teal-700);
+  --key-hover: var(--palette-teal-800);
+  --key-active: var(--palette-teal-900);
+  --key-tint: var(--palette-teal-50);
+  --key-tint-border: var(--palette-teal-200);
+  --on-key: var(--palette-surface);
+  --accent: var(--palette-amber-400);
+  --accent-hover: var(--palette-amber-500);
+  --on-accent: var(--palette-ink);
+  --link: var(--palette-teal-700);
+  --link-visited: var(--palette-plum-700);
+  --error: var(--palette-vermilion-700);
+  --disabled-bg: var(--palette-linen);
+  --disabled-fg: var(--palette-stone);
+  --disabled-border: var(--palette-sand);
+  --hero-bg: var(--palette-teal-950);
+  --hero-glow: rgba(180, 217, 207, 0.14);
+  --on-hero: var(--palette-surface);
+  --hero-lead: var(--palette-mint-100);
+  --hero-muted: var(--palette-mint-300);
+  --hero-chip-border: var(--palette-mint-500);
+  --hero-chip-hover: var(--palette-teal-hover-dark);
+  --hero-divider: rgba(180, 217, 207, 0.28);
+  --footer-bg: var(--palette-ink);
+  --footer-text: var(--palette-linen);
+  --focus-outline: var(--palette-ink);
+  --focus-ring: var(--palette-sun-300);
 
   color-scheme: light;
 }
@@ -46,7 +99,7 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg-base);
+  background: var(--bg-page);
   color: var(--text-body);
   font-family: var(--font-noto-sans-jp), var(--font-family-sans);
   /* DADS 本文: Std-16N-170（16px / 行間 1.7 / 字間 0.02em） */
@@ -58,7 +111,7 @@ body {
 
 /* DADS フォーカスリング: 黒のアウトライン + 黄色のリング */
 :where(a, button, input, textarea, select):focus-visible {
-  outline: 4px solid var(--color-neutral-black);
+  outline: 4px solid var(--focus-outline);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
@@ -117,7 +170,7 @@ body {
   font-size: var(--font-size-20);
   font-weight: var(--font-weight-700);
   line-height: var(--line-height-130);
-  color: var(--color-neutral-solid-gray-900);
+  color: var(--text-strong);
 }
 
 .brand-name small {
@@ -191,7 +244,7 @@ body {
 
 .toggle[aria-pressed="true"] {
   font-weight: var(--font-weight-700);
-  color: var(--color-neutral-white);
+  color: var(--on-key);
   background: var(--key);
 }
 
@@ -259,7 +312,7 @@ body {
   height: 40px;
   border-radius: 50%;
   background: var(--bg-base);
-  border: 1px solid var(--color-neutral-solid-gray-200);
+  border: 1px solid var(--border-hairline);
   object-fit: cover;
 }
 
@@ -310,8 +363,8 @@ body {
 }
 
 .example:disabled {
-  color: var(--color-neutral-solid-gray-300);
-  border-color: var(--color-neutral-solid-gray-300);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
   cursor: not-allowed;
 }
 
@@ -352,12 +405,12 @@ body {
 
 .message.user .bubble {
   background: var(--key-tint);
-  border: 1px solid var(--color-key-100);
+  border: 1px solid var(--key-tint-border);
 }
 
 .message.assistant .bubble {
   background: var(--bg-base);
-  border: 1px solid var(--color-neutral-solid-gray-200);
+  border: 1px solid var(--border-hairline);
 }
 
 .message.assistant:not(.error) .bubble {
@@ -388,14 +441,14 @@ body {
 
 /* DADS リンク: 下線付き、訪問済みは magenta */
 .md a {
-  color: var(--color-key-1000);
+  color: var(--link);
   text-decoration: underline;
   text-underline-offset: 3px;
   word-break: break-all;
 }
 
 .md a:visited {
-  color: var(--color-primitive-magenta-900);
+  color: var(--link-visited);
 }
 
 .md a:hover {
@@ -413,7 +466,7 @@ body {
 
 .md pre {
   background: var(--bg-subtle);
-  border: 1px solid var(--color-neutral-solid-gray-200);
+  border: 1px solid var(--border-hairline);
   padding: 12px 16px;
   border-radius: var(--border-radius-8);
   overflow-x: auto;
@@ -425,7 +478,7 @@ body {
 }
 
 .md blockquote {
-  border-left: 4px solid var(--color-neutral-solid-gray-420);
+  border-left: 4px solid var(--accent);
   padding-left: 12px;
   color: var(--text-description);
 }
@@ -473,18 +526,18 @@ body {
 }
 
 .text-field::placeholder {
-  color: var(--color-neutral-solid-gray-420);
+  color: var(--text-placeholder);
   text-overflow: ellipsis;
 }
 
 .text-field:hover:not(:disabled) {
-  border-color: var(--color-neutral-black);
+  border-color: var(--text-body);
 }
 
 .text-field:disabled {
   background: var(--bg-subtle);
-  border-color: var(--color-neutral-solid-gray-300);
-  color: var(--color-neutral-solid-gray-420);
+  border-color: var(--disabled-border);
+  color: var(--disabled-fg);
 }
 
 /* DADS ボタン（プライマリ・M サイズ: 高さ 48px） */
@@ -496,7 +549,7 @@ body {
   font: inherit;
   font-weight: var(--font-weight-700);
   line-height: var(--line-height-100);
-  color: var(--color-neutral-white);
+  color: var(--on-key);
   background: var(--key);
   border: 4px double transparent;
   border-radius: var(--border-radius-8);
@@ -514,8 +567,8 @@ body {
 }
 
 .button-primary:disabled {
-  background: var(--color-neutral-solid-gray-300);
-  color: var(--color-neutral-solid-gray-50);
+  background: var(--disabled-bg);
+  color: var(--disabled-fg);
   cursor: not-allowed;
 }
 
@@ -543,8 +596,8 @@ body {
 }
 
 .button-secondary:disabled {
-  color: var(--color-neutral-solid-gray-300);
-  border-color: var(--color-neutral-solid-gray-300);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
   cursor: not-allowed;
 }
 
@@ -570,18 +623,18 @@ body {
   line-height: var(--line-height-130);
   color: var(--text-description);
   background: var(--bg-subtle);
-  border-bottom: 1px solid var(--color-neutral-solid-gray-200);
+  border-bottom: 1px solid var(--border-hairline);
 }
 
 /* DADS リンク（.md a と同じ見た目） */
 .landing-notice a {
-  color: var(--color-key-1000);
+  color: var(--link);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .landing-notice a:visited {
-  color: var(--color-primitive-magenta-900);
+  color: var(--link-visited);
 }
 
 .landing-notice a:hover {
@@ -602,9 +655,12 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  color: var(--color-neutral-white);
-  background: var(--color-key-1100);
-  border-bottom: 8px solid var(--color-key-600);
+  color: var(--on-hero);
+  /* 上から差す朝の光のような、ごく弱いミントのにじみ（下端の山吹の帯が朝日） */
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, var(--hero-glow), transparent 70%),
+    var(--hero-bg);
+  border-bottom: 6px solid var(--accent);
 }
 
 .hero-inner {
@@ -635,7 +691,7 @@ body {
   /* Std-22N-150 */
   font-size: clamp(var(--font-size-18), 2.2vw, var(--font-size-22));
   line-height: var(--line-height-150);
-  color: var(--color-key-50);
+  color: var(--hero-lead);
 }
 
 .ask {
@@ -668,7 +724,7 @@ body {
   margin: 0 0 12px;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-700);
-  color: var(--color-key-100);
+  color: var(--hero-muted);
 }
 
 .suggestions ul {
@@ -687,15 +743,15 @@ body {
   font: inherit;
   font-size: var(--font-size-16);
   line-height: var(--line-height-130);
-  color: var(--color-neutral-white);
+  color: var(--on-hero);
   background: transparent;
-  border: 1px solid var(--color-key-200);
+  border: 1px solid var(--hero-chip-border);
   border-radius: var(--border-radius-32);
   cursor: pointer;
 }
 
 .chip:hover {
-  background: var(--color-key-1000);
+  background: var(--hero-chip-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -704,7 +760,7 @@ body {
 .support-cta {
   margin-top: 40px;
   padding-top: 32px;
-  border-top: 1px solid var(--color-key-600);
+  border-top: 1px solid var(--hero-divider);
 }
 
 .support-button {
@@ -713,15 +769,15 @@ body {
   font: inherit;
   font-size: var(--font-size-18);
   font-weight: var(--font-weight-700);
-  color: var(--color-key-1100);
-  background: var(--color-neutral-white);
+  color: var(--on-accent);
+  background: var(--accent);
   border: 4px double transparent;
   border-radius: var(--border-radius-8);
   cursor: pointer;
 }
 
 .support-button:hover {
-  background: var(--key-tint);
+  background: var(--accent-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -731,15 +787,15 @@ body {
   margin: 12px auto 0;
   font-size: var(--font-size-14);
   line-height: var(--line-height-150);
-  color: var(--color-key-100);
+  color: var(--hero-muted);
 }
 
 .footer {
   padding: 32px 0;
   font-size: var(--font-size-14);
   line-height: var(--line-height-170);
-  color: var(--color-neutral-solid-gray-50);
-  background: var(--color-neutral-solid-gray-900);
+  color: var(--footer-text);
+  background: var(--footer-bg);
 }
 
 /* トップ → チャットの切り替え */
@@ -800,21 +856,21 @@ button.mic:hover:not(:disabled) {
 }
 
 button.mic:disabled {
-  color: var(--color-neutral-solid-gray-300);
-  border-color: var(--color-neutral-solid-gray-300);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
   cursor: not-allowed;
 }
 
 button.mic.listening {
   background: var(--error);
   border-color: var(--error);
-  color: var(--color-neutral-white);
+  color: var(--on-key);
   animation: mic-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes mic-pulse {
   50% {
-    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.25);
+    box-shadow: 0 0 0 6px rgba(179, 38, 30, 0.25);
   }
 }
 
@@ -839,7 +895,7 @@ button.mic.listening {
 /* ヒーロー（濃い背景）上のエラー表示 */
 .ask-voice-error {
   margin: 12px auto 0;
-  color: var(--color-neutral-white);
+  color: var(--on-hero);
   font-weight: var(--font-weight-700);
 }
 
@@ -898,7 +954,7 @@ rt {
   width: 36px;
   height: 20px;
   border-radius: 10px;
-  background: var(--color-neutral-solid-gray-536);
+  background: var(--border-field);
   transition: background-color 0.15s;
 }
 
@@ -909,7 +965,7 @@ rt {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-neutral-white);
+  background: var(--bg-base);
   transition: transform 0.15s;
 }
 
