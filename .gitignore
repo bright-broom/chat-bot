@@ -4,5 +4,12 @@ node_modules/
 .next/
 out/
 .vercel
+# Cloudflare / OpenNext
+.open-next/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+# ビルド時に node_modules からコピーする振り仮名辞書
+public/kuromoji-dict/
 *.tsbuildinfo
 .DS_Store

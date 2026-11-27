@@ -1,12 +1,30 @@
 "use client";
 
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import { annotate, type Segment, type Tokenizer } from "../lib/furigana-core";
 
 // 振り仮名（HTML の <ruby> 要素）表示。
-// 読みはサーバーの /api/furigana（kuromoji による形態素解析）で求め、
-// 同じ文字列の結果はキャッシュする。短時間に要求された文字列はまとめて 1 回で問い合わせる。
+// 読みはブラウザ上で kuromoji（形態素解析）を使って求める。辞書（約 17MB）は
+// public/kuromoji-dict/ から、振り仮名を初めてオンにしたときだけ読み込む。
+// 同じ文字列の結果はキャッシュし、短時間に要求された文字列はまとめて処理する。
 
-type Segment = [string] | [string, string];
+const DICT_PATH = "/kuromoji-dict/";
+let tokenizerPromise: Promise<Tokenizer> | null = null;
+
+function getTokenizer(): Promise<Tokenizer> {
+  tokenizerPromise ??= import("kuromoji/build/kuromoji.js").then(
+    ({ default: kuromoji }) =>
+      new Promise<Tokenizer>((resolve, reject) => {
+        kuromoji.builder({ dicPath: DICT_PATH }).build((err, tokenizer) => {
+          if (err) {
+            tokenizerPromise = null;
+            reject(err);
+          } else resolve(tokenizer);
+        });
+      }),
+  );
+  return tokenizerPromise;
+}
 
 export const FuriganaContext = createContext(false);
 
@@ -31,14 +49,8 @@ async function flush() {
   queued.clear();
   texts.forEach((t) => inflight.add(t));
   try {
-    const res = await fetch("/api/furigana", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texts }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const { results } = (await res.json()) as { results: Segment[][] };
-    texts.forEach((t, i) => cache.set(t, results[i] ?? [[t]]));
+    const tokenizer = await getTokenizer();
+    texts.forEach((t) => cache.set(t, annotate(tokenizer, t)));
   } catch (err) {
     console.error("振り仮名の取得に失敗しました", err);
     // 失敗した文字列は振り仮名なしで表示し、再要求を繰り返さない

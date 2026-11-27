@@ -4,7 +4,7 @@
 
 [チームみらい](https://github.com/team-mirai) の [mirai-gbot](https://github.com/team-mirai/mirai-gbot) をフォークして改変したものです（ライセンスは同じ AGPL-3.0-or-later）。
 
-Next.js (App Router) + TypeScript のチャットボットで、[OpenRouter](https://openrouter.ai/) 経由で Claude を呼び出します。Vercel にそのままデプロイできます。
+Next.js (App Router) + TypeScript のチャットボットで、[OpenRouter](https://openrouter.ai/) 経由で Claude を呼び出します。[Cloudflare Workers](https://developers.cloudflare.com/workers/) 上で [OpenNext](https://opennext.js.org/cloudflare) を使って動かしています。
 
 ## ローカルで動かす
 
@@ -16,14 +16,37 @@ npm run dev
 
 http://localhost:3000 を開きます。
 
-## Vercel にデプロイ
+Cloudflare の実行環境（workerd）で確認したいときは:
 
-1. Vercel ダッシュボードで **Add New → Project** からこの GitHub リポジトリを Import
-2. Framework Preset は自動で **Next.js** になります（設定変更不要）
-3. **Environment Variables** に `OPENROUTER_API_KEY` を追加
-4. **Deploy**
+```bash
+cp .dev.vars.example .dev.vars   # OPENROUTER_API_KEY を記入
+npm run preview                  # http://localhost:8787
+```
 
-以降は `main` への push で本番、PR ごとにプレビューが自動デプロイされます。
+## Cloudflare にデプロイ
+
+設定は `wrangler.jsonc`（Worker 名 `chat-bot`）と `open-next.config.ts` にあります。
+
+### GitHub 連携（Workers Builds、推奨）
+
+GitHub Actions の実行枠を使わずに、Cloudflare 側でビルド・デプロイします。
+
+1. Cloudflare ダッシュボードの **Workers & Pages → Create → Import a repository** でこのリポジトリを選ぶ
+2. ビルド設定
+   - Build command: `npx opennextjs-cloudflare build`
+   - Deploy command: `npx opennextjs-cloudflare deploy`
+3. Worker の **Settings → Variables and Secrets** に `OPENROUTER_API_KEY` を **Secret** として追加（任意の設定値もここに追加）
+4. デプロイすると `https://chat-bot.<アカウント>.workers.dev` で公開される
+
+以降は `main` への push で本番が自動デプロイされます。
+
+### 手元から直接デプロイ
+
+```bash
+npx wrangler login
+npx wrangler secret put OPENROUTER_API_KEY
+npm run deploy
+```
 
 ## 構成
 
@@ -31,7 +54,7 @@ http://localhost:3000 を開きます。
 - `app/useSpeechRecognition.ts` — ブラウザの Web Speech API による日本語の音声入力。対応ブラウザ（Chrome・Edge・Safari など）でのみ入力欄にマイクボタンが表示されます
 - `app/api/chat/route.ts` — OpenRouter の Chat Completions API を呼び出し、テキストをストリーミング返却
 - モデル: 既定は `openai/gpt-6-luna`（安価なモデル。入力 $0.10 / 出力 $0.50 per 1M tokens）。環境変数 `OPENROUTER_MODEL` で変更できます
-- 振り仮名: 画面右上のスイッチで、漢字に振り仮名（HTML の `<ruby>` 要素）を付けて表示できます。読みは `app/api/furigana/route.ts` が形態素解析ライブラリ [kuromoji](https://github.com/takuyaa/kuromoji.js) で求めます（外部 API は使いません）
+- 振り仮名: 画面右上のスイッチで、漢字に振り仮名（HTML の `<ruby>` 要素）を付けて表示できます。読みは形態素解析ライブラリ [kuromoji](https://github.com/takuyaa/kuromoji.js) を使って**ブラウザ上で**求めます（`app/Furigana.tsx` / `lib/furigana-core.ts`、外部 API は使いません）。辞書（約 17MB）は Worker に同梱できないため、ビルド時に `public/kuromoji-dict/` へコピーして静的ファイルとして配り、振り仮名を初めてオンにしたときだけ読み込みます
 - 支援制度を探す（AI インタビュー）: 最初の画面の「使える支援制度を探す」ボタンで開始。ボットが困りごと・世帯構成・市区町村・収入の目安などを一問ずつ聞き取り、利用できそうな給付・手当・減免・貸付・相談窓口を、申請先・期限・出典つきで一覧表示します。氏名や詳しい住所などの個人情報は聞きません。API には `mode: "support"` を付けて送り、専用のシステムプロンプトに切り替えます
 - 回答しない話題: `app/api/chat/blocked.ts` に名前（表記ゆれは正規化して比較）を登録すると、その人物についての質問には LLM を呼ばずに定型の断り文を返します。間接的に指す質問用の指示文も `BLOCKED_TOPIC_RULE` に書けます。既定では何も登録していません
 - Web 検索: OpenRouter の web プラグインで最新情報を検索した上で回答します。検索対象は政府・自治体の公式ドメイン（`go.jp` / `lg.jp` とそのサブドメイン）だけに限定しており、それ以外のサイトは検索・出典表示の対象になりません。対象ドメインは `SEARCH_ALLOWED_DOMAINS`（カンマ区切り）で変更できます。参照したページは回答末尾に出典として表示されます。`OPENROUTER_WEB_SEARCH=false` で無効化できます（検索 1 回あたり追加コストがかかります）
@@ -51,8 +74,8 @@ http://localhost:3000 を開きます。
 運用側で設定してください（コードでは防ぎきれないもの）:
 
 - **OpenRouter の API キーに利用上限（クレジット上限）を設定**する。`/api/chat` は認証なしの公開エンドポイントなので、上限が最後の砦になります
-- **Vercel Firewall でレート制限ルールを追加**する（例: `/api/chat` に IP あたり 10 回/分）。アプリ内のレート制限はインスタンスごとのメモリなので完全ではありません
-- 必要なら Vercel の Bot Protection / Attack Challenge Mode を有効にする
+- **Cloudflare の WAF でレート制限ルールを追加**する（例: `/api/chat` に IP あたり 10 回/分）。アプリ内のレート制限はアイソレートごとのメモリなので完全ではありません。WAF のルールは独自ドメイン（Cloudflare に追加したゾーン）で配信する場合に使えます
+- 必要なら Bot Fight Mode や Cloudflare Turnstile を有効にする
 
 ## 不正利用・コスト対策
 
@@ -66,7 +89,7 @@ http://localhost:3000 を開きます。
 | `MAX_HISTORY_MESSAGES` | 20 | モデルに送る会話履歴の最大件数（古い分は切り捨て） |
 | `MAX_HISTORY_CHARS` | 12000 | モデルに送る会話履歴の合計最大文字数（古い分は切り捨て） |
 
-レート制限のカウンタはサーバーのメモリ上に持っているため、Vercel のように複数インスタンスで動く環境やコールドスタート後はカウントが分散・リセットされます。あくまで目安の上限なので、**確実な上限として OpenRouter 側でも利用上限を設定してください**。
+レート制限のカウンタはサーバーのメモリ上に持っているため、Cloudflare Workers のように複数のアイソレートで動く環境や再起動後はカウントが分散・リセットされます。あくまで目安の上限なので、**確実な上限として OpenRouter 側でも利用上限を設定してください**。
 
 ### OpenRouter の利用上限を設定する
 
@@ -75,7 +98,7 @@ http://localhost:3000 を開きます。
 3. 自動チャージ（Auto top-up）を使う場合は、チャージ額・上限も予算に合わせておく
 4. [Activity ページ](https://openrouter.ai/activity) で利用状況を定期的に確認する
 
-さらに強い対策が必要になった場合は、Vercel Firewall のレート制限ルールや Bot 対策（Attack Challenge Mode / BotID）、Cloudflare Turnstile の導入を検討してください。
+さらに強い対策が必要になった場合は、Cloudflare WAF のレート制限ルールや Bot 対策（Bot Fight Mode）、Cloudflare Turnstile の導入を検討してください。
 
 ## 元プロジェクトからの主な変更点
 
@@ -84,6 +107,7 @@ http://localhost:3000 を開きます。
 - トップのプロトタイプ告知（YouTube 配信へのリンク）を削除
 - Issue 自動実装・コンフリクト自動解決の GitHub Actions を削除
 - ブラウザ保存キーの接頭辞を `bb-chat-bot:` に変更
+- 公開先を Vercel から Cloudflare Workers（OpenNext）に変更。振り仮名の解析をサーバーからブラウザへ移動、クライアント IP は `cf-connecting-ip` を優先
 
 ## ライセンス
 

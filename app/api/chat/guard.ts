@@ -75,8 +75,9 @@ export function isCrossSite(req: Request): boolean {
 }
 
 export function clientIp(req: Request): string {
-  // Vercel は x-forwarded-for の先頭に実クライアント IP を入れる
+  // Cloudflare は cf-connecting-ip に実クライアント IP を入れる（Vercel 等は x-real-ip / x-forwarded-for）
   return (
+    req.headers.get("cf-connecting-ip") ??
     req.headers.get("x-real-ip") ??
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "unknown"
@@ -84,8 +85,8 @@ export function clientIp(req: Request): string {
 }
 
 // IP ごとの簡易レート制限（固定ウィンドウ / 1 分あたり・1 日あたり）。
-// サーバーレスではインスタンスごとのメモリなので完全ではない（上限は目安）。
-// 本番では Vercel Firewall のレート制限ルールや OpenRouter キーの利用上限も併用すること。
+// Cloudflare Workers ではアイソレート（インスタンス）ごとのメモリなので完全ではない（上限は目安）。
+// 本番では Cloudflare の WAF レート制限ルールや OpenRouter キーの利用上限も併用すること。
 const PER_MINUTE = envInt("RATE_LIMIT_PER_MINUTE", 10); // 0 で無効
 const PER_DAY = envInt("RATE_LIMIT_PER_DAY", 100); // 0 で無効
 const MINUTE_MS = 60_000;

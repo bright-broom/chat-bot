@@ -1,31 +1,13 @@
-import path from "node:path";
-import kuromoji from "kuromoji";
-import { isCrossSite } from "../chat/guard";
+import type { Tokenizer as KTokenizer, IpadicFeatures } from "kuromoji";
 
-export const runtime = "nodejs";
-
-// 振り仮名の付与: kuromoji（形態素解析）で読みを求め、
-// [表記, 読み?] の区切り列にして返す。読みは漢字部分にだけ付ける。
+// 振り仮名の付与: kuromoji（形態素解析）の結果から、
+// [表記, 読み?] の区切り列を作る。読みは漢字部分にだけ付ける。
 //   例: "食べる" → [["食", "た"], ["べる"]]
+// ブラウザ側（app/Furigana.tsx）で使う。Cloudflare Workers では辞書（約 17MB）を
+// 同梱・展開できないため、サーバーではなくブラウザで解析する。
 
-type Segment = [string] | [string, string];
-type Tokenizer = kuromoji.Tokenizer<kuromoji.IpadicFeatures>;
-
-let tokenizerPromise: Promise<Tokenizer> | null = null;
-
-function getTokenizer(): Promise<Tokenizer> {
-  tokenizerPromise ??= new Promise((resolve, reject) => {
-    kuromoji
-      .builder({ dicPath: path.join(process.cwd(), "node_modules/kuromoji/dict") })
-      .build((err, tokenizer) => {
-        if (err) {
-          tokenizerPromise = null;
-          reject(err);
-        } else resolve(tokenizer);
-      });
-  });
-  return tokenizerPromise;
-}
+export type Segment = [string] | [string, string];
+export type Tokenizer = KTokenizer<IpadicFeatures>;
 
 const KANJI = /[\p{Script=Han}々〆ヶ]/u;
 const KANJI_RUN = /[\p{Script=Han}々〆ヶ]+/gu;
@@ -60,7 +42,7 @@ function splitOkurigana(surface: string, reading: string): Segment[] {
   return parts.map((p) => (p.kanji ? [p.text, m[g++]] : [p.text]));
 }
 
-function annotate(tokenizer: Tokenizer, text: string): Segment[] {
+export function annotate(tokenizer: Tokenizer, text: string): Segment[] {
   const out: Segment[] = [];
   const pushPlain = (s: string) => {
     const prev = out[out.length - 1];
@@ -84,32 +66,4 @@ function annotate(tokenizer: Tokenizer, text: string): Segment[] {
     }
   }
   return out;
-}
-
-const MAX_TEXTS = 500;
-const MAX_CHARS = 50_000;
-
-export async function POST(req: Request) {
-  if (isCrossSite(req)) {
-    return new Response("許可されていない送信元です。", { status: 403 });
-  }
-  let texts: unknown;
-  try {
-    ({ texts } = await req.json());
-  } catch {
-    return new Response("Invalid JSON", { status: 400 });
-  }
-  if (
-    !Array.isArray(texts) ||
-    texts.length > MAX_TEXTS ||
-    !texts.every((t) => typeof t === "string") ||
-    texts.reduce((n: number, t: string) => n + t.length, 0) > MAX_CHARS
-  ) {
-    return new Response("texts must be an array of strings", { status: 400 });
-  }
-
-  const tokenizer = await getTokenizer();
-  return Response.json({
-    results: (texts as string[]).map((t) => annotate(tokenizer, t)),
-  });
 }
