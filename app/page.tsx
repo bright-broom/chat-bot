@@ -426,7 +426,7 @@ export default function Home() {
             >
               {m.role === "assistant" && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img className="avatar" src="/bot-avatar.svg" alt="" width={40} height={40} />
+                <img className="avatar" src="/bot-avatar.webp" alt="" width={40} height={40} />
               )}
               <div className="message-body">
                 <span className="message-label">
