@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chat-bot",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "chat-bot"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+  // OPENROUTER_API_KEY はシークレットとして設定する（ダッシュボード、または `npx wrangler secret put OPENROUTER_API_KEY`）
+  // 任意の設定（OPENROUTER_MODEL、RATE_LIMIT_PER_MINUTE など）は "vars" に書くか、ダッシュボードで変数として追加する
+}
