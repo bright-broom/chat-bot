@@ -1,6 +1,6 @@
 // Cloudflare Workers AI。API キー不要で、無料枠（1 日 10,000 Neurons）がある。入力は学習に使われない。
 import type { ModelMessage } from "../types";
-import { type ChatProvider, UpstreamError } from "./types";
+import { type ChatProvider, type StreamOptions, UpstreamError } from "./types";
 
 /** Workers AI バインディングのうち、ここで使う部分だけの型（モデル ID を環境変数で差し替えられるようにする） */
 export type WorkersAiBinding = {
@@ -10,11 +10,12 @@ export type WorkersAiBinding = {
 export function createWorkersAiProvider(ai: WorkersAiBinding, model: string): ChatProvider {
   return {
     name: "workers-ai",
+    model,
     webSearch: false,
-    async stream(messages: ModelMessage[]) {
+    async stream(messages: ModelMessage[], { maxTokens }: StreamOptions) {
       let result: unknown;
       try {
-        result = await ai.run(model, { messages, stream: true, max_completion_tokens: 2000 });
+        result = await ai.run(model, { messages, stream: true, max_completion_tokens: maxTokens });
       } catch (err) {
         // 無料枠（1 日 10,000 Neurons）を使い切った場合などもここに来る
         throw new UpstreamError(

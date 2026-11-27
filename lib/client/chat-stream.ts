@@ -15,7 +15,7 @@ export class ChatRequestError extends Error {
 }
 
 /** 送信する履歴の上限（サーバー側でも同じく切り詰める） */
-export const MAX_SENT_MESSAGES = 20;
+export const MAX_SENT_MESSAGES = 10;
 
 export type StreamChatOptions = {
   /** これまでに届いた回答全文を受け取る（届くたびに呼ばれる） */

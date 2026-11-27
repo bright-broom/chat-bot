@@ -2,6 +2,8 @@
 // Cloudflare Workers では process.env がリクエスト処理時に確実に揃うため、
 // モジュール読み込み時ではなく、呼び出しのたびに読む（値の取り違えを防ぐ）。
 
+import type { Mode } from "./types";
+
 type Env = Record<string, string | undefined>;
 
 function intFrom(env: Env, name: string, fallback: number): number {
@@ -19,7 +21,11 @@ export type ChatConfig = {
     messageChars: number;
     /** 会話履歴の合計最大文字数 */
     totalChars: number;
+    /** 過去のアシスタント返答 1 件あたりの最大文字数（履歴として送るとき） */
+    assistantChars: number;
   };
+  /** 1 回の返答の最大出力トークン（モード別） */
+  maxOutputTokens: Record<Mode, number>;
   rateLimit: {
     /** IP あたり 1 分間の上限（0 で無効） */
     perMinute: number;
@@ -48,9 +54,16 @@ export function loadConfig(env: Env = process.env): ChatConfig {
   return {
     limits: {
       bodyBytes: 64 * 1024,
-      messages: Math.max(1, intFrom(env, "MAX_HISTORY_MESSAGES", 20)),
+      // 履歴はトークン消費の主因なので控えめに（直近の文脈があれば会話は成り立つ）
+      messages: Math.max(1, intFrom(env, "MAX_HISTORY_MESSAGES", 10)),
       messageChars: Math.max(1, intFrom(env, "MAX_INPUT_CHARS", 2000)),
-      totalChars: Math.max(1, intFrom(env, "MAX_HISTORY_CHARS", 12000)),
+      totalChars: Math.max(1, intFrom(env, "MAX_HISTORY_CHARS", 6000)),
+      assistantChars: Math.max(1, intFrom(env, "MAX_ASSISTANT_CHARS", 800)),
+    },
+    // 通常の相談は短く答える指示なので上限も小さく、支援制度の一覧は長くなるので大きく
+    maxOutputTokens: {
+      chat: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_CHAT", 700)),
+      support: Math.max(64, intFrom(env, "MAX_OUTPUT_TOKENS_SUPPORT", 1800)),
     },
     rateLimit: {
       perMinute: intFrom(env, "RATE_LIMIT_PER_MINUTE", 10),

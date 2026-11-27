@@ -6,7 +6,8 @@ describe("loadConfig", () => {
     const c = loadConfig({});
     expect(c.openRouter).toBeNull();
     expect(c.workersAi.model).toBe(DEFAULT_WORKERS_AI_MODEL);
-    expect(c.limits).toMatchObject({ messages: 20, messageChars: 2000, totalChars: 12000 });
+    expect(c.limits).toMatchObject({ messages: 10, messageChars: 2000, totalChars: 6000, assistantChars: 800 });
+    expect(c.maxOutputTokens).toEqual({ chat: 700, support: 1800 });
     expect(c.rateLimit).toEqual({ perMinute: 10, perDay: 100 });
     expect(c.allowedDomains).toEqual(["go.jp", "lg.jp"]);
   });
@@ -25,6 +26,13 @@ describe("loadConfig", () => {
     expect(c.rateLimit).toEqual({ perMinute: 10, perDay: 0 });
     // 文字数上限は 0 にできない（最低 1）
     expect(c.limits.messageChars).toBe(1);
+  });
+});
+
+describe("出力トークンの上限", () => {
+  it("環境変数で変えられ、極端に小さい値は 64 に引き上げる", () => {
+    const c = loadConfig({ MAX_OUTPUT_TOKENS_CHAT: "300", MAX_OUTPUT_TOKENS_SUPPORT: "1" });
+    expect(c.maxOutputTokens).toEqual({ chat: 300, support: 64 });
   });
 });
 

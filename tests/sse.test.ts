@@ -113,6 +113,31 @@ describe("toTextStream", () => {
   });
 });
 
+describe("完了時のコールバック（使用量の計測・回答キャッシュ用）", () => {
+  it("流した全文とトークン使用量を渡す", async () => {
+    const onComplete = vi.fn();
+    const usage = `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 900, completion_tokens: 120 } })}\n\n`;
+    await readAll(toTextStream(streamOf([openai("こんにちは"), usage]), { onComplete }));
+    expect(onComplete).toHaveBeenCalledWith({
+      text: "こんにちは",
+      failed: false,
+      usage: { inputTokens: 900, outputTokens: 120 },
+    });
+  });
+
+  it("エラーがあれば failed（キャッシュしない判断に使う）", async () => {
+    const onComplete = vi.fn();
+    await readAll(toTextStream(streamOf(['data: {"error":{"message":"x"}}\n\n']), { onComplete }));
+    expect(onComplete.mock.calls[0][0].failed).toBe(true);
+  });
+
+  it("空の回答も failed 扱い", async () => {
+    const onComplete = vi.fn();
+    await readAll(toTextStream(streamOf(["data: [DONE]\n\n"]), { onComplete }));
+    expect(onComplete.mock.calls[0][0]).toMatchObject({ text: "", failed: true });
+  });
+});
+
 describe("出典の整形", () => {
   it("長いタイトルは短縮し、タイトルがなければドメインを使う", () => {
     expect(citationLabel({ url: "https://x", title: "あ".repeat(40) })).toBe(`${"あ".repeat(29)}…`);

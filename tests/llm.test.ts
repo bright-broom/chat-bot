@@ -5,6 +5,7 @@ import { OPENROUTER_URL, createOpenRouterProvider } from "@/lib/chat/llm/openrou
 import { createWorkersAiProvider } from "@/lib/chat/llm/workers-ai";
 
 const msgs = [{ role: "user" as const, content: "質問" }];
+const opts = { maxTokens: 321 };
 const okStream = () => new ReadableStream<Uint8Array>({ start: (c) => c.close() });
 
 describe("selectProvider", () => {
@@ -27,17 +28,21 @@ describe("Workers AI", () => {
     const stream = okStream();
     const run = vi.fn().mockResolvedValue(stream);
     const p = createWorkersAiProvider({ run }, "@cf/test/model");
-    expect(await p.stream(msgs)).toBe(stream);
-    expect(run).toHaveBeenCalledWith("@cf/test/model", expect.objectContaining({ messages: msgs, stream: true }));
+    expect(await p.stream(msgs, opts)).toBe(stream);
+    expect(run).toHaveBeenCalledWith(
+      "@cf/test/model",
+      expect.objectContaining({ messages: msgs, stream: true, max_completion_tokens: 321 }),
+    );
+    expect(p.model).toBe("@cf/test/model");
     expect(p.webSearch).toBe(false);
   });
   it("呼び出し失敗（無料枠超過など）は 503 の UpstreamError", async () => {
     const p = createWorkersAiProvider({ run: vi.fn().mockRejectedValue(new Error("quota")) }, "m");
-    await expect(p.stream(msgs)).rejects.toMatchObject({ status: 503, detail: "quota" });
+    await expect(p.stream(msgs, opts)).rejects.toMatchObject({ status: 503, detail: "quota" });
   });
   it("ストリームでない応答は 502", async () => {
     const p = createWorkersAiProvider({ run: vi.fn().mockResolvedValue({ response: "x" }) }, "m");
-    await expect(p.stream(msgs)).rejects.toBeInstanceOf(UpstreamError);
+    await expect(p.stream(msgs, opts)).rejects.toBeInstanceOf(UpstreamError);
   });
 });
 
@@ -47,25 +52,26 @@ describe("OpenRouter", () => {
   it("学習に使わないプロバイダー指定と、許可ドメインに限った検索で呼び出す", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(okStream()));
     const p = createOpenRouterProvider({ ...base, webSearch: true, fetch: fetchMock });
-    await p.stream(msgs);
+    await p.stream(msgs, opts);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(OPENROUTER_URL);
     expect(init.headers.Authorization).toBe("Bearer sk-secret");
     const body = JSON.parse(init.body);
     expect(body.provider).toEqual({ data_collection: "deny" });
+    expect(body.max_tokens).toBe(321);
     expect(body.plugins).toEqual([{ id: "web", include_domains: ["go.jp", "*.go.jp"] }]);
   });
 
   it("検索を切ったときは plugins を送らない", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(okStream()));
-    await createOpenRouterProvider({ ...base, webSearch: false, fetch: fetchMock }).stream(msgs);
+    await createOpenRouterProvider({ ...base, webSearch: false, fetch: fetchMock }).stream(msgs, opts);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).plugins).toBeUndefined();
   });
 
   it("エラー詳細は detail に入れ、利用者向けの文言は別にする", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("account xyz over quota", { status: 429 }));
     const p = createOpenRouterProvider({ ...base, webSearch: false, fetch: fetchMock });
-    const err = await p.stream(msgs).catch((e) => e);
+    const err = await p.stream(msgs, opts).catch((e) => e);
     expect(err).toBeInstanceOf(UpstreamError);
     expect(err.userMessage).toBe("混み合っています。しばらく待ってからお試しください。");
     expect(err.userMessage).not.toContain("xyz");

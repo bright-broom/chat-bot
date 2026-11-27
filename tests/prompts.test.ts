@@ -21,6 +21,7 @@ describe("systemPrompt", () => {
     const p = systemPrompt("chat", false, { ...base, webSearch: true });
     expect(p).toContain("go.jp / lg.jp ドメイン");
     expect(p).not.toContain("Web 検索は使えません");
+    expect(p).toContain("1〜2 個");
   });
 
   it("支援制度モードでは聞き取りの指示と個人情報の制限を含む", () => {
@@ -37,6 +38,28 @@ describe("systemPrompt", () => {
 
   it("空行（空の指示）を含まない", () => {
     expect(systemPrompt("chat", false, base)).not.toMatch(/\n\n/);
+  });
+});
+
+describe("プロンプトの長さ（毎回の入力トークンになるため上限を見張る）", () => {
+  it.each([
+    ["chat", false, 1000],
+    ["chat", true, 1250],
+    ["support", false, 1700],
+  ] as const)("%s / やさしい日本語=%s は %i 文字以内", (mode, easy, max) => {
+    expect(systemPrompt(mode, easy, base).length).toBeLessThanOrEqual(max);
+  });
+
+  it("短くしても安全に関わる指示は残す", () => {
+    const p = systemPrompt("support", false, base);
+    for (const must of ["110 番", "119 番", "いのちの電話", "0120-279-338", "189", "#8008", "マイナンバー"]) {
+      expect(p).toContain(must);
+    }
+  });
+
+  it("Web 検索がないときは検索クエリの指示を入れない", () => {
+    expect(systemPrompt("chat", false, base)).not.toContain("含めて検索する");
+    expect(systemPrompt("chat", false, { ...base, webSearch: true })).toContain("含めて検索する");
   });
 });
 

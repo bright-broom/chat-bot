@@ -26,9 +26,17 @@ describe("parseMessages", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("長いアシスタント発言は切り詰めて受け入れる", () => {
-    const r = parseMessages([u("q"), a("x".repeat(limits.messageChars * 3)), u("q2")], limits);
-    expect(r.ok && r.messages[1].content.length).toBe(limits.messageChars * 2);
+  it("長いアシスタント発言は冒頭だけ残して受け入れる（トークン節約）", () => {
+    const r = parseMessages([u("q"), a("x".repeat(5000)), u("q2")], limits);
+    const kept = r.ok ? r.messages[1].content : "";
+    expect(kept.startsWith("x".repeat(limits.assistantChars))).toBe(true);
+    expect(kept).toContain("（以下省略）");
+    expect(kept.length).toBeLessThan(limits.assistantChars + 20);
+  });
+
+  it("短いアシスタント発言はそのまま", () => {
+    const r = parseMessages([u("q"), a("短い答え"), u("q2")], limits);
+    expect(r.ok && r.messages[1].content).toBe("短い答え");
   });
 
   it("空白だけの発言は捨てる", () => {
