@@ -3,13 +3,14 @@
 // 各処理の中身は lib/chat/ 以下のモジュールに置く（それぞれ単体テストあり）。
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { BLOCKED_REPLY, mentionsBlockedTopic } from "@/lib/chat/blocked";
+import { type AnswerCache, cacheKey, createEdgeCache, dayJst, isCacheable, noopCache } from "@/lib/chat/cache";
 import { loadConfig } from "@/lib/chat/config";
 import { isAllowedUrl, safeCitationUrl } from "@/lib/chat/domains";
 import { RateLimiter, clientIp, isCrossSite } from "@/lib/chat/guard";
 import { type ChatProvider, UpstreamError, selectProvider } from "@/lib/chat/llm";
 import type { WorkersAiBinding } from "@/lib/chat/llm/workers-ai";
 import { errorSummary, log } from "@/lib/chat/log";
-import { systemPrompt, todayJst } from "@/lib/chat/prompts";
+import { PROMPT_VERSION, systemPrompt, todayJst } from "@/lib/chat/prompts";
 import { parseChatRequest } from "@/lib/chat/request";
 import { toTextStream } from "@/lib/chat/sse";
 import type { ModelMessage } from "@/lib/chat/types";
@@ -24,6 +25,20 @@ const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8", "Cache-Contr
 
 function plain(text: string, status: number, headers: Record<string, string> = {}) {
   return new Response(text, { status, headers: { ...TEXT_HEADERS, ...headers } });
+}
+
+function answerCache(): AnswerCache {
+  const edge = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  return edge ? createEdgeCache(edge) : noopCache;
+}
+
+/** レスポンスを返したあとも処理（キャッシュ保存など）を続けさせる */
+function waitUntil(promise: Promise<unknown>) {
+  try {
+    getCloudflareContext().ctx.waitUntil(promise);
+  } catch {
+    void promise;
+  }
 }
 
 function workersAiBinding(): WorkersAiBinding | undefined {
@@ -81,6 +96,26 @@ export async function POST(req: Request) {
     return plain("サーバーの設定に問題があります。", 500);
   }
 
+  // 1 問目の短い質問は、同じ日・同じ設定の回答をエッジキャッシュから返す（LLM を呼ばない）
+  const cache = answerCache();
+  const key = isCacheable(messages)
+    ? await cacheKey({
+        promptVersion: PROMPT_VERSION,
+        model: provider.model,
+        mode,
+        easyJapanese,
+        day: dayJst(),
+        question: messages[0].content,
+      })
+    : null;
+  if (key) {
+    const cached = await cache.get(key).catch(() => null);
+    if (cached) {
+      log.info("chat.completed", { provider: provider.name, mode, cache: "hit", chars: cached.length });
+      return new Response(cached, { headers: { ...TEXT_HEADERS, "X-Answer-Cache": "HIT" } });
+    }
+  }
+
   const modelMessages: ModelMessage[] = [
     {
       role: "system",
@@ -96,7 +131,10 @@ export async function POST(req: Request) {
   let upstream: ReadableStream<Uint8Array>;
   try {
     // クライアントが切断したら上流の生成も止める（無駄なトークン消費を防ぐ）
-    upstream = await provider.stream(modelMessages, req.signal);
+    upstream = await provider.stream(modelMessages, {
+      maxTokens: config.maxOutputTokens[mode],
+      signal: req.signal,
+    });
   } catch (err) {
     if (err instanceof UpstreamError) {
       log.error("chat.upstream_error", { provider: provider.name, status: err.status, detail: err.detail });
@@ -114,7 +152,23 @@ export async function POST(req: Request) {
     },
     onUpstreamError: (message) =>
       log.error("chat.stream_error", { provider: provider.name, error: message.slice(0, 300) }),
+    onComplete: ({ text, failed, usage }) => {
+      // 消費量を観測できるようにする（入力本文は出さない）
+      log.info("chat.completed", {
+        provider: provider.name,
+        mode,
+        cache: key ? "miss" : "skip",
+        failed,
+        chars: text.length,
+        historyMessages: messages.length,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+      });
+      if (key && !failed) waitUntil(cache.put(key, text));
+    },
   });
 
-  return new Response(stream, { headers: TEXT_HEADERS });
+  return new Response(stream, {
+    headers: { ...TEXT_HEADERS, ...(key ? { "X-Answer-Cache": "MISS" } : {}) },
+  });
 }

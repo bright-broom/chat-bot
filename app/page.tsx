@@ -1,15 +1,22 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { useSpeechRecognition } from "./useSpeechRecognition";
 import { FuriganaContext, FuriganaText } from "./Furigana";
 import { isAbortError, streamChat } from "@/lib/client/chat-stream";
+import { useStickToBottom } from "@/lib/client/useStickToBottom";
+import { Composer } from "./chat/Composer";
+import { MessageActions, TypingIndicator } from "./chat/MessageActions";
 import type { Mode } from "@/lib/chat/types";
 
 const FURIGANA_KEY = "bb-chat-bot:furigana";
 
-type Message = { role: "user" | "assistant"; content: string; error?: boolean };
+type Message = { role: "user" | "assistant"; content: string; error?: boolean; stopped?: boolean };
+
+const MAX_INPUT = 2000;
+// 支援制度モードで、何往復か聞き取ったあとに出すワンタップの返答
+const SUPPORT_FINISH = "今の内容で、使えそうな制度を案内してください。";
 
 const SUPPORT_START ="使える支援制度を探したいです。";
 
@@ -75,7 +82,9 @@ export default function Home() {
   const [furigana, setFurigana] = useState(false);
   const [fontSize, setFontSize] = useState<FontSize>("normal");
   const [easyJapanese, setEasyJapanese] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLElement>(null);
+  // スクリーンリーダー向けの短いお知らせ（回答の本文を 1 文字ずつ読み上げさせないため）
+  const [announcement, setAnnouncement] = useState("");
   // 生成中のリクエスト（「新しい相談」や画面を離れたときに中断する）
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -142,9 +151,7 @@ export default function Home() {
     save(EASY_JAPANESE_KEY, String(value));
   }
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const { atBottom, scrollToBottom } = useStickToBottom(messagesRef, [messages]);
 
   useEffect(() => {
     if (inChat) return;
@@ -172,6 +179,9 @@ export default function Home() {
     setMessages([...history, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
+    setAnnouncement("");
+    // 送ったら最新の位置に戻す
+    requestAnimationFrame(() => scrollToBottom("smooth"));
 
     // 前の回答がまだ流れていれば止めてから新しく送る
     abortRef.current?.abort();
@@ -186,11 +196,22 @@ export default function Home() {
           onText: (reply) => setMessages([...history, { role: "assistant", content: reply }]),
         },
       );
+      setAnnouncement("ブルームの回答が届きました。");
     } catch (err) {
-      // 「新しい相談」などで中断した場合は何も表示しない
-      if (isAbortError(err)) return;
+      if (isAbortError(err)) {
+        // 「停止」した場合は途中までの回答を残す（空なら消す）。「新しい相談」では会話ごと消えている
+        setMessages((cur) => {
+          const last = cur[cur.length - 1];
+          if (!last || last.role !== "assistant") return cur;
+          return last.content
+            ? [...cur.slice(0, -1), { ...last, stopped: true }]
+            : cur.slice(0, -1);
+        });
+        return;
+      }
       const msg = err instanceof Error && err.message ? err.message : "エラーが発生しました。";
       setMessages([...history, { role: "assistant", content: msg, error: true }]);
+      setAnnouncement(`エラー: ${msg}`);
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null;
@@ -199,9 +220,19 @@ export default function Home() {
     }
   }
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    send(input);
+  function stop() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setAnnouncement("回答を停止しました。");
+  }
+
+  // エラーになった質問をもう一度送る
+  function retry(errorIndex: number) {
+    const before = messages.slice(0, errorIndex);
+    const lastUser = before.length - 1;
+    if (lastUser < 0 || before[lastUser].role !== "user") return;
+    send(before[lastUser].content, before.slice(0, lastUser));
   }
 
   function reset() {
@@ -263,6 +294,25 @@ export default function Home() {
     </button>
   );
 
+  const micButton = speech.supported ? (
+    <button
+      type="button"
+      className={`mic${speech.listening ? " listening" : ""}`}
+      onClick={toggleVoiceInput}
+      disabled={loading}
+      aria-label={speech.listening ? "音声入力を停止" : "音声で入力"}
+      aria-pressed={speech.listening}
+      title={speech.listening ? "音声入力を停止" : "音声で入力"}
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"
+        />
+      </svg>
+    </button>
+  ) : null;
+
   const withFurigana = (node: ReactNode) => (
     <FuriganaContext.Provider value={furigana}>{node}</FuriganaContext.Provider>
   );
@@ -315,6 +365,8 @@ export default function Home() {
         <main>
           <section className="hero" aria-labelledby="hero-title">
             <div className="hero-inner">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-mascot" src="/bot-avatar.webp" alt="" width={88} height={88} />
               <h1 id="hero-title" className="hello">
                 <span key={greeting} className="hello-word">
                   {GREETINGS[greeting][0]}
@@ -325,44 +377,22 @@ export default function Home() {
                 <FuriganaText text="行政の手続きや制度について、何をお知りになりたいですか？" />
               </p>
 
-              <form className="ask" onSubmit={handleSubmit}>
-                <label htmlFor="ask-input" className="visually-hidden">
-                  相談したい内容
-                </label>
-                <input
+              <div className="ask">
+                <Composer
                   id="ask-input"
-                  className="text-field ask-field"
+                  large
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={
-                    speech.listening ? "お話しください…" : `例：${EXAMPLE_QUESTIONS[exampleIndex]}`
-                  }
+                  onChange={setInput}
+                  onSubmit={() => send(input)}
+                  busy={loading}
+                  onStop={stop}
+                  maxLength={MAX_INPUT}
                   autoFocus
-                  autoComplete="off"
-                  maxLength={2000}
+                  submitLabel="聞いてみる"
+                  placeholder={speech.listening ? "お話しください…" : `例：${EXAMPLE_QUESTIONS[exampleIndex]}`}
+                  extra={micButton}
                 />
-                {speech.supported && (
-                  <button
-                    type="button"
-                    className={`mic${speech.listening ? " listening" : ""}`}
-                    onClick={toggleVoiceInput}
-                    disabled={loading}
-                    aria-label={speech.listening ? "音声入力を停止" : "音声で入力"}
-                    aria-pressed={speech.listening}
-                    title={speech.listening ? "音声入力を停止" : "音声で入力"}
-                  >
-                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                      <path
-                        fill="currentColor"
-                        d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"
-                      />
-                    </svg>
-                  </button>
-                )}
-                <button type="submit" className="button-primary ask-button" disabled={!input.trim()}>
-                  聞いてみる
-                </button>
-              </form>
+              </div>
               {speech.error && (
                 <p className="voice-error ask-voice-error" role="alert">
                   {speech.error}
@@ -421,54 +451,76 @@ export default function Home() {
         {settings}
       </header>
 
-      <main className="messages" aria-label="会話">
-        <div className="messages-inner" aria-live="polite">
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`message ${m.role}${m.error ? " error" : ""}`}
-            >
-              {m.role === "assistant" && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img className="avatar" src="/bot-avatar.webp" alt="" width={40} height={40} />
-              )}
-              <div className="message-body">
-                <span className="message-label">
-                  {m.role === "user" ? "あなた" : m.error ? "エラー" : "ブルーム"}
-                </span>
-                {/* 生成中のメッセージは文字列が変わり続けるため、完了してから振り仮名を付ける */}
-                <FuriganaContext.Provider
-                  value={furigana && !(loading && i === messages.length - 1)}
-                >
-                  <div className="bubble" role={m.error ? "alert" : undefined}>
-                    {m.role === "assistant" && m.content && !m.error ? (
-                      <Markdown text={m.content} />
-                    ) : m.content ? (
-                      <FuriganaText text={m.content} />
-                    ) : loading ? (
-                      <span className="typing">回答を作成中…</span>
-                    ) : (
-                      ""
-                    )}
-                  </div>
-                </FuriganaContext.Provider>
+      <main className="messages" aria-label="会話" ref={messagesRef} aria-busy={loading}>
+        <div className="messages-inner">
+          {messages.map((m, i) => {
+            const streaming = loading && i === messages.length - 1;
+            const done = m.role === "assistant" && !streaming;
+            return (
+              <div key={i} className={`message ${m.role}${m.error ? " error" : ""}`}>
+                {m.role === "assistant" && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="avatar" src="/bot-avatar.webp" alt="" width={40} height={40} />
+                )}
+                <div className="message-body">
+                  <span className="message-label">
+                    {m.role === "user" ? "あなた" : m.error ? "エラー" : "ブルーム"}
+                  </span>
+                  {/* 生成中のメッセージは文字列が変わり続けるため、完了してから振り仮名を付ける */}
+                  <FuriganaContext.Provider value={furigana && !streaming}>
+                    <div className="bubble" role={m.error ? "alert" : undefined}>
+                      {m.role === "assistant" && m.content && !m.error ? (
+                        <Markdown text={m.content} />
+                      ) : m.content ? (
+                        <FuriganaText text={m.content} />
+                      ) : streaming ? (
+                        <TypingIndicator />
+                      ) : null}
+                      {m.stopped && <p className="stopped-note">（回答を途中で停止しました）</p>}
+                    </div>
+                  </FuriganaContext.Provider>
+                  {done && m.content && (
+                    <MessageActions
+                      text={m.error ? undefined : m.content}
+                      onRetry={m.error || m.stopped ? () => retry(i) : undefined}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-          <div ref={bottomRef} />
+            );
+          })}
+
+          {mode === "support" && !loading && messages.filter((m) => m.role === "user").length >= 3 &&
+            messages[messages.length - 1]?.role === "assistant" && (
+              <div className="quick-replies">
+                <button type="button" className="chip-light" onClick={() => send(SUPPORT_FINISH)}>
+                  <FuriganaText text="この内容で制度を案内して" />
+                </button>
+              </div>
+            )}
         </div>
+
+        {!atBottom && (
+          <button type="button" className="jump-latest" onClick={() => scrollToBottom("smooth")}>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M12 16.5 5 9.5 6.4 8.1l5.6 5.6 5.6-5.6L19 9.5z" />
+            </svg>
+            最新の回答へ
+          </button>
+        )}
       </main>
 
-      <form className="composer" onSubmit={handleSubmit}>
+      <div className="composer">
         <div className="composer-inner">
-          <label htmlFor="message-input" className="visually-hidden">
-            メッセージ
-          </label>
-          <input
+          <Composer
             id="message-input"
-            className="text-field"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={setInput}
+            onSubmit={() => send(input)}
+            busy={loading}
+            onStop={stop}
+            maxLength={MAX_INPUT}
+            autoFocus
             placeholder={
               speech.listening
                 ? "お話しください…"
@@ -476,34 +528,13 @@ export default function Home() {
                   ? "状況を入力（個人情報は不要です）"
                   : "続けて質問する"
             }
-            disabled={loading}
-            autoComplete="off"
-            maxLength={2000}
-            autoFocus
+            extra={micButton}
           />
-          {speech.supported && (
-            <button
-              type="button"
-              className={`mic${speech.listening ? " listening" : ""}`}
-              onClick={toggleVoiceInput}
-              disabled={loading}
-              aria-label={speech.listening ? "音声入力を停止" : "音声で入力"}
-              aria-pressed={speech.listening}
-              title={speech.listening ? "音声入力を停止" : "音声で入力"}
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"
-                />
-              </svg>
-            </button>
-          )}
-          <button type="submit" className="button-primary" disabled={loading || !input.trim()}>
-            送信
-          </button>
         </div>
-      </form>
+      </div>
+      <p className="visually-hidden" role="status" aria-live="polite">
+        {announcement}
+      </p>
       {speech.error && (
         <p className="voice-error" role="alert">
           {speech.error}

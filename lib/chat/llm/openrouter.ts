@@ -1,7 +1,7 @@
 // OpenRouter（OpenAI 互換の Chat Completions API）。政府・自治体サイトに限定した Web 検索つき。
 import { includeDomains } from "../domains";
 import type { ModelMessage } from "../types";
-import { type ChatProvider, UpstreamError } from "./types";
+import { type ChatProvider, type StreamOptions, UpstreamError } from "./types";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -17,8 +17,9 @@ export function createOpenRouterProvider(opts: OpenRouterOptions): ChatProvider 
   const doFetch = opts.fetch ?? fetch;
   return {
     name: "openrouter",
+    model: opts.model,
     webSearch: opts.webSearch,
-    async stream(messages: ModelMessage[], signal?: AbortSignal) {
+    async stream(messages: ModelMessage[], { maxTokens, signal }: StreamOptions) {
       const res = await doFetch(OPENROUTER_URL, {
         method: "POST",
         signal,
@@ -30,7 +31,7 @@ export function createOpenRouterProvider(opts: OpenRouterOptions): ChatProvider 
         body: JSON.stringify({
           model: opts.model,
           stream: true,
-          max_tokens: 4000,
+          max_tokens: maxTokens,
           reasoning: { effort: "low" },
           // 行政相談は個人情報を含みうるため、入力を学習・保存に使うプロバイダーへはルーティングしない
           provider: { data_collection: "deny" },

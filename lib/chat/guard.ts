@@ -8,6 +8,10 @@ export type ParsedMessages = { ok: true; messages: ChatMessage[] } | { ok: false
 
 const INVALID = "リクエストの形式が不正です。";
 
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…（以下省略）` : text;
+}
+
 /**
  * クライアントから来た messages を検証し、上限内に切り詰めて返す。
  * - content は文字列のみ許可（配列形式で画像・ファイル等を送り込まれるのを防ぐ）
@@ -31,7 +35,8 @@ export function parseMessages(list: unknown, limits: Limits): ParsedMessages {
         error: `メッセージが長すぎます（${limits.messageChars} 文字以内にしてください）。`,
       };
     }
-    messages.push({ role, content: content.slice(0, limits.messageChars * 2) });
+    // 過去のアシスタント返答は長くなりがちなので、要点が入る冒頭だけを履歴として送る（トークン節約）
+    messages.push({ role, content: role === "assistant" ? clip(content, limits.assistantChars) : content });
   }
 
   let recent = messages.slice(-limits.messages);

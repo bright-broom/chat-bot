@@ -36,7 +36,7 @@ describe("streamChat", () => {
     await streamChat({ ...payload, messages: many }, { onText: () => {}, fetch: fetchMock });
     const sent = JSON.parse(fetchMock.mock.calls[0][1].body).messages;
     expect(sent).toHaveLength(MAX_SENT_MESSAGES);
-    expect(sent[0]).toEqual({ role: "user", content: "m10" });
+    expect(sent[0]).toEqual({ role: "user", content: `m${30 - MAX_SENT_MESSAGES}` });
   });
 
   it("エラー応答は本文をメッセージにした ChatRequestError", async () => {

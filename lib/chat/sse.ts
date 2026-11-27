@@ -4,6 +4,9 @@
 
 export type Citation = { url: string; title?: string };
 
+/** モデルが報告したトークン使用量（返さないモデルもある） */
+export type Usage = { inputTokens?: number; outputTokens?: number };
+
 export type TextStreamOptions = {
   /** 出典として載せてよい URL を返す（載せない場合は null） */
   acceptCitation?: (url: string) => string | null;
@@ -11,6 +14,8 @@ export type TextStreamOptions = {
   maxCitations?: number;
   /** 上流から届いたエラー（ログ用。利用者の入力は含めない） */
   onUpstreamError?: (message: string) => void;
+  /** ストリームを最後まで流し終えたとき（クライアントの切断時は呼ばれない） */
+  onComplete?: (result: { text: string; failed: boolean; usage: Usage }) => void;
 };
 
 type Chunk = {
@@ -21,6 +26,7 @@ type Chunk = {
     };
   }[];
   response?: unknown;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
 };
 
@@ -47,7 +53,9 @@ export function formatCitations(citations: readonly Citation[], max = 3): string
 }
 
 /** SSE の 1 行を解釈する。本文テキストと、見つかった出典を返す */
-export function parseSseLine(line: string): { text: string; citations: Citation[]; error?: string } | null {
+export function parseSseLine(
+  line: string,
+): { text: string; citations: Citation[]; error?: string; usage?: Usage } | null {
   const trimmed = line.trim();
   // コメント行（": OPENROUTER PROCESSING" など）や空行は無視
   if (!trimmed.startsWith("data:")) return null;
@@ -70,33 +78,46 @@ export function parseSseLine(line: string): { text: string; citations: Citation[
     }
   }
   const text = delta?.content ?? (typeof chunk.response === "string" ? chunk.response : "");
-  return { text: text ?? "", citations };
+  const usage = chunk.usage
+    ? { inputTokens: chunk.usage.prompt_tokens, outputTokens: chunk.usage.completion_tokens }
+    : undefined;
+  return usage ? { text: text ?? "", citations, usage } : { text: text ?? "", citations };
 }
 
 export function toTextStream(
   upstream: ReadableStream<Uint8Array>,
   options: TextStreamOptions = {},
 ): ReadableStream<Uint8Array> {
-  const { acceptCitation = () => null, maxCitations = 3, onUpstreamError } = options;
+  const { acceptCitation = () => null, maxCitations = 3, onUpstreamError, onComplete } = options;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const reader = upstream.getReader();
   const citations = new Map<string, Citation>();
   let buffer = "";
+  let emitted = "";
+  let failed = false;
+  let usage: Usage = {};
+
+  const emit = (text: string, controller: ReadableStreamDefaultController<Uint8Array>) => {
+    emitted += text;
+    controller.enqueue(encoder.encode(text));
+  };
 
   const handleLine = (line: string, controller: ReadableStreamDefaultController<Uint8Array>) => {
     const parsed = parseSseLine(line);
     if (!parsed) return;
+    if (parsed.usage) usage = parsed.usage;
     if (parsed.error !== undefined) {
+      failed = true;
       onUpstreamError?.(parsed.error);
-      controller.enqueue(encoder.encode(STREAM_ERROR_TEXT));
+      emit(STREAM_ERROR_TEXT, controller);
       return;
     }
     for (const c of parsed.citations) {
       const url = acceptCitation(c.url);
       if (url && !citations.has(url)) citations.set(url, { url, title: c.title });
     }
-    if (parsed.text) controller.enqueue(encoder.encode(parsed.text));
+    if (parsed.text) emit(parsed.text, controller);
   };
 
   return new ReadableStream<Uint8Array>({
@@ -115,13 +136,15 @@ export function toTextStream(
         if (buffer) handleLine(buffer, controller);
 
         const tail = formatCitations([...citations.values()], maxCitations);
-        if (tail) controller.enqueue(encoder.encode(tail));
+        if (tail) emit(tail, controller);
       } catch (err) {
+        failed = true;
         onUpstreamError?.(err instanceof Error ? err.message : String(err));
-        controller.enqueue(encoder.encode(STREAM_ERROR_TEXT));
+        emit(STREAM_ERROR_TEXT, controller);
       } finally {
         controller.close();
       }
+      onComplete?.({ text: emitted, failed: failed || !emitted.trim(), usage });
     },
     cancel(reason) {
       // クライアントが切断したら上流の読み取りも止める（無駄な生成・課金を防ぐ）
