@@ -218,16 +218,13 @@ export default function Home() {
 
   const brand = (
     <button type="button" className="brand" onClick={reset} aria-label="BrightBroom Bot トップに戻る">
+      {/* ロゴ: 常磐色の円に、ほうき（山吹の穂）ときらり */}
       <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
         <circle cx="16" cy="16" r="16" fill="currentColor" />
-        <path
-          d="M21.66 10.34A8 8 0 1 0 24 16H17"
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth="3.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <path d="M22.6 5.8 15.1 15.9" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M12.9 14.6 18.3 18.6 15.4 25.6C11.4 25.2 8.2 22.9 6.6 19.6Z" fill="var(--accent)" />
+        <path d="M12.6 14.7 18.2 18.8" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M23.4 19.2 24.3 21.3 26.4 22.2 24.3 23.1 23.4 25.2 22.5 23.1 20.4 22.2 22.5 21.3Z" fill="#ffffff" />
       </svg>
       <span className="brand-name">
         BrightBroom Bot
@@ -429,11 +426,11 @@ export default function Home() {
             >
               {m.role === "assistant" && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img className="avatar" src="/bot-avatar.png" alt="" width={40} height={40} />
+                <img className="avatar" src="/bot-avatar.svg" alt="" width={40} height={40} />
               )}
               <div className="message-body">
                 <span className="message-label">
-                  {m.role === "user" ? "あなた" : m.error ? "エラー" : "ジボジボ"}
+                  {m.role === "user" ? "あなた" : m.error ? "エラー" : "ブルーム"}
                 </span>
                 {/* 生成中のメッセージは文字列が変わり続けるため、完了してから振り仮名を付ける */}
                 <FuriganaContext.Provider
