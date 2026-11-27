@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Noto_Sans_JP } from "next/font/google";
 // デジタル庁デザインシステム公式デザイントークン（CSS カスタムプロパティ）
 import "@digital-go-jp/design-tokens/dist/tokens.css";
@@ -15,6 +15,11 @@ const notoSansJp = Noto_Sans_JP({
 export const metadata: Metadata = {
   title: "BrightBroom Bot",
   description: "行政手続きや公的制度について相談できる行政相談用チャットボット",
+};
+
+// モバイルブラウザのアドレスバーの色（ヒーローの常磐色に合わせる）
+export const viewport: Viewport = {
+  themeColor: "#0f3a35",
 };
 
 // 保存済みの文字サイズを描画前に反映し、標準サイズで一瞬表示されるのを防ぐ
