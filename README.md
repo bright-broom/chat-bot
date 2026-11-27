@@ -53,15 +53,49 @@ npm run deploy
 
 - `app/page.tsx` — チャット画面（クライアントコンポーネント）。画面上部で文字サイズ（標準・大・特大）と「やさしい日本語」モードを切り替えられます（設定はブラウザに保存）
 - `app/useSpeechRecognition.ts` — ブラウザの Web Speech API による日本語の音声入力。対応ブラウザ（Chrome・Edge・Safari など）でのみ入力欄にマイクボタンが表示されます
-- `app/api/chat/route.ts` — LLM を呼び出し、テキストをストリーミング返却
+- `app/api/chat/route.ts` — チャット API の入口。検証 → レート制限 → プロンプト組み立て → LLM 呼び出し → ストリーミング返却の流れだけを書き、処理の中身は `lib/chat/` に分けています（下の「コードの構成」参照）
 - LLM: 既定は Cloudflare Workers AI の `@cf/google/gemma-4-26b-a4b-it`（`wrangler.jsonc` の `ai` バインディング）。環境変数 `WORKERS_AI_MODEL` で別のモデル（例: `@cf/zai-org/glm-4.7-flash`）に変えられます
   - 費用: Workers AI は 1 日 10,000 Neurons まで無料（毎日 0 時 UTC にリセット）。1 往復あたり数十 Neurons 程度なので、1 日数百回の会話までは無料枠に収まる見込みです。**Workers の無料プランなら、無料枠を超えた分はエラーになるだけで課金されません**（有料プランでは超過分が $0.011 / 1,000 Neurons で課金）
   - Workers AI では Web 検索をしないため、出典リンクは付きません。金額や期限は公式サイト・窓口で確認するよう案内します
   - `OPENROUTER_API_KEY` を設定すると OpenRouter に切り替わり、政府・自治体サイトに限定した Web 検索と出典表示が使えます（モデルは `OPENROUTER_MODEL`、既定 `openai/gpt-6-luna`）
 - 振り仮名: 画面右上のスイッチで、漢字に振り仮名（HTML の `<ruby>` 要素）を付けて表示できます。読みは形態素解析ライブラリ [kuromoji](https://github.com/takuyaa/kuromoji.js) を使って**ブラウザ上で**求めます（`app/Furigana.tsx` / `lib/furigana-core.ts`、外部 API は使いません）。辞書（約 17MB）は Worker に同梱できないため、ビルド時に `public/kuromoji-dict/` へコピーして静的ファイルとして配り、振り仮名を初めてオンにしたときだけ読み込みます
 - 支援制度を探す（AI インタビュー）: 最初の画面の「使える支援制度を探す」ボタンで開始。ボットが困りごと・世帯構成・市区町村・収入の目安などを一問ずつ聞き取り、利用できそうな給付・手当・減免・貸付・相談窓口を、申請先・期限・出典つきで一覧表示します。氏名や詳しい住所などの個人情報は聞きません。API には `mode: "support"` を付けて送り、専用のシステムプロンプトに切り替えます
-- 回答しない話題: `app/api/chat/blocked.ts` に名前（表記ゆれは正規化して比較）を登録すると、その人物についての質問には LLM を呼ばずに定型の断り文を返します。間接的に指す質問用の指示文も `BLOCKED_TOPIC_RULE` に書けます。既定では何も登録していません
+- 回答しない話題: `lib/chat/blocked.ts` に名前（表記ゆれは正規化して比較）を登録すると、その人物についての質問には LLM を呼ばずに定型の断り文を返します。間接的に指す質問用の指示文も `BLOCKED_TOPIC_RULE` に書けます。既定では何も登録していません
 - Web 検索（OpenRouter 利用時のみ）: OpenRouter の web プラグインで最新情報を検索した上で回答します。検索対象は政府・自治体の公式ドメイン（`go.jp` / `lg.jp` とそのサブドメイン）だけに限定しており、それ以外のサイトは検索・出典表示の対象になりません。対象ドメインは `SEARCH_ALLOWED_DOMAINS`（カンマ区切り）で変更できます。参照したページは回答末尾に出典として表示されます。`OPENROUTER_WEB_SEARCH=false` で無効化できます（検索 1 回あたり追加コストがかかります）
+
+## コードの構成
+
+```
+app/
+  api/chat/route.ts      POST /api/chat（各モジュールをつなぐだけの薄い層）
+  page.tsx               チャット画面
+  Furigana.tsx / Markdown.tsx / useSpeechRecognition.ts
+lib/
+  chat/
+    config.ts            環境変数の読み取り（リクエストごとに読む）
+    request.ts           リクエスト本文の検証
+    guard.ts             入力の上限・クロスサイト拒否・レート制限（RateLimiter）
+    prompts.ts           システムプロンプトの組み立て（純粋関数）
+    sse.ts               LLM の SSE 応答 → 本文テキストのストリーム（出典の付与）
+    domains.ts           検索・出典に使ってよいドメインの判定
+    blocked.ts           回答しない話題
+    log.ts               構造化ログ（JSON 1 行。利用者の入力は出さない）
+    llm/                 LLM の呼び出し先（共通インターフェース ChatProvider）
+      workers-ai.ts      Cloudflare Workers AI（既定）
+      openrouter.ts      OpenRouter（OPENROUTER_API_KEY があるとき。Web 検索つき）
+  client/chat-stream.ts  ブラウザ側のストリーミング受信（中断対応）
+  furigana-core.ts       振り仮名の付与ロジック
+tests/                   Vitest のユニットテスト
+```
+
+### テストとチェック
+
+```bash
+npm run check   # 型チェック（tsc）＋ユニットテスト（Vitest）
+npm test        # テストだけ
+```
+
+`npm run build` の前に `npm run check` が自動で走るため、型エラーやテストの失敗があると Cloudflare のビルド（Workers Builds）も止まり、本番には出ません。GitHub Actions は使っていません。
 
 ## セキュリティ
 
@@ -83,7 +117,7 @@ npm run deploy
 
 ## 不正利用・コスト対策
 
-`/api/chat` は 1 回ごとに LLM の利用量（Workers AI の Neurons、または OpenRouter の従量課金）を消費するため、次の制限を入れています（`app/api/chat/guard.ts`）。値は環境変数で変更でき、`0` で無効になります。
+`/api/chat` は 1 回ごとに LLM の利用量（Workers AI の Neurons、または OpenRouter の従量課金）を消費するため、次の制限を入れています（`lib/chat/config.ts` で読み込み、`lib/chat/guard.ts` で適用）。値は環境変数で変更でき、`0` で無効になります。
 
 | 環境変数 | 既定値 | 内容 |
 | --- | --- | --- |
@@ -106,7 +140,7 @@ npm run deploy
 
 ## 元プロジェクトからの主な変更点
 
-- ボットの名前・運営者を BrightBroom Bot / BrightBroom に変更（`app/api/chat/route.ts` の `BOT_PROFILE`、画面のロゴ、タイトル）
+- ボットの名前・運営者を BrightBroom Bot / BrightBroom に変更（`lib/chat/prompts.ts` の自己紹介情報、画面のロゴ、タイトル）
 - ロゴ（ツバメ）とキャラクター「ブルーム」（ツバメ、`public/bot-avatar.webp`。Google Gemini で生成）を新しく作成（元のロゴとキャラクター画像は使っていません）
 - 元プロジェクト固有の回答 NG 人物の指定を削除（仕組みは残しています）
 - トップのプロトタイプ告知（YouTube 配信へのリンク）を削除
